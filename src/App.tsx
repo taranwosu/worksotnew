@@ -23,6 +23,8 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { ProjectWorkspacePage } from "./pages/ProjectWorkspacePage";
 import { ContractPage } from "./pages/ContractPage";
+import { VerificationPage } from "./pages/VerificationPage";
+import { AdminPage } from "./pages/AdminPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -130,6 +132,18 @@ const contractRoute = createRoute({
   component: ContractPage,
 });
 
+const verificationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/verification",
+  component: VerificationPage,
+});
+
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  component: AdminPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   expertsRoute,
@@ -146,6 +160,8 @@ const routeTree = rootRoute.addChildren([
   messagesRoute,
   projectWorkspaceRoute,
   contractRoute,
+  verificationRoute,
+  adminRoute,
 ]);
 
 const router = createRouter({

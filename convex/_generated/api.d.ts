@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as contracts from "../contracts.js";
 import type * as files from "../files.js";
@@ -18,6 +19,7 @@ import type * as mutations from "../mutations.js";
 import type * as portfolio from "../portfolio.js";
 import type * as queries from "../queries.js";
 import type * as reviews from "../reviews.js";
+import type * as verification from "../verification.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +28,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
   auth: typeof auth;
   contracts: typeof contracts;
   files: typeof files;
@@ -36,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   portfolio: typeof portfolio;
   queries: typeof queries;
   reviews: typeof reviews;
+  verification: typeof verification;
 }>;
 
 /**

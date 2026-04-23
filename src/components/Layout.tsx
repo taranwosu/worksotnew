@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Compass, Menu, X, LayoutDashboard, LogOut, User as UserIcon, Briefcase, Search, MessageSquare } from "lucide-react";
+import { Compass, Menu, X, LayoutDashboard, LogOut, User as UserIcon, Briefcase, Search, MessageSquare, BadgeCheck, Shield } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
 import { useQuery } from "convex/react";
@@ -23,6 +23,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     session ? {} : "skip"
   );
   const unreadCount = unreadSummary?.unreadConversations ?? 0;
+  const amIAdmin = useQuery(api.admin.amIAdmin, session ? {} : "skip") ?? false;
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -175,14 +176,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             </span>
                           )}
                         </Link>
+                        {hasExpertProfile && (
+                          <Link
+                            to="/verification"
+                            onClick={() => setProfileOpen(false)}
+                            className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <BadgeCheck className="h-4 w-4 text-slate-400" />
+                            Verification & badges
+                          </Link>
+                        )}
                         {!hasExpertProfile && (
                           <Link
-to="/onboarding/expert"
+                            to="/onboarding/expert"
                             onClick={() => setProfileOpen(false)}
                             className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                           >
                             <UserIcon className="h-4 w-4 text-slate-400" />
                             Become an expert
+                          </Link>
+                        )}
+                        {amIAdmin && (
+                          <Link
+                            to="/admin"
+                            onClick={() => setProfileOpen(false)}
+                            className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <Shield className="h-4 w-4 text-slate-400" />
+                            Admin
                           </Link>
                         )}
                       </div>
@@ -279,13 +300,22 @@ to="/onboarding/expert"
                     )}
                   </Link>
                   {hasExpertProfile ? (
-                    <Link
-                      to="/experts"
-                      onClick={() => setMobileOpen(false)}
-                      className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                    >
-                      Browse projects
-                    </Link>
+                    <>
+                      <Link
+                        to="/experts"
+                        onClick={() => setMobileOpen(false)}
+                        className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Browse projects
+                      </Link>
+                      <Link
+                        to="/verification"
+                        onClick={() => setMobileOpen(false)}
+                        className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Verification & badges
+                      </Link>
+                    </>
                   ) : (
                     <>
                       <Link
@@ -303,6 +333,15 @@ to="/onboarding/expert"
                         Become an expert
                       </Link>
                     </>
+                  )}
+                  {amIAdmin && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setMobileOpen(false)}
+                      className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      Admin
+                    </Link>
                   )}
                   <button
                     onClick={handleSignOut}
