@@ -23,6 +23,9 @@ import {
   Clock,
   FolderKanban,
   CircleDollarSign,
+  BadgeCheck,
+  Award,
+  ShieldCheck,
 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
@@ -37,6 +40,7 @@ export function DashboardPage() {
   const clientRequests = useQuery(api.queries.listClientRequests, session ? {} : "skip");
   const proposals = useQuery(api.queries.listProposals, session ? {} : "skip");
   const engagements = useQuery(api.milestones.listMyEngagements, session ? {} : "skip");
+  const myBadges = useQuery(api.verification.listMyBadges, session ? {} : "skip");
 
   if (isPending) {
     return (
@@ -248,11 +252,24 @@ export function DashboardPage() {
                     </div>
                   )}
                   <div className="flex-1">
-                    <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      {expertProfile.isPublished ? "Active & visible" : "Draft"}
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        {expertProfile.isPublished ? "Active & visible" : "Draft"}
+                      </span>
+                      {expertProfile.isVerified && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-300">
+                          <ShieldCheck className="h-3 w-3" />
+                          Verified
+                        </span>
+                      )}
                     </div>
-                    <h2 className="text-xl font-bold text-white sm:text-2xl">{expertProfile.fullName}</h2>
+                    <h2 className="flex items-center gap-1.5 text-xl font-bold text-white sm:text-2xl">
+                      {expertProfile.fullName}
+                      {expertProfile.isVerified && (
+                        <BadgeCheck className="h-5 w-5 text-blue-400" />
+                      )}
+                    </h2>
                     <p className="mt-0.5 text-sm text-slate-300">{expertProfile.headline}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
                       <span>📍 {expertProfile.location}</span>
@@ -261,9 +278,31 @@ export function DashboardPage() {
                       <span>•</span>
                       <span>{expertProfile.availability}</span>
                     </div>
+                    {myBadges && myBadges.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {myBadges.map((b) => (
+                          <span
+                            key={b._id}
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
+                          >
+                            <Award className="h-3 w-3" />
+                            {b.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
+                  {!expertProfile.isVerified && (
+                    <Link
+                      to="/verification"
+                      className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-400"
+                    >
+                      <BadgeCheck className="h-4 w-4" />
+                      Get verified
+                    </Link>
+                  )}
                   <Link
                     to="/experts"
                     className="flex items-center justify-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/10"
