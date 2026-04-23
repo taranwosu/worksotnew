@@ -400,12 +400,13 @@ export function DashboardPage() {
                 {hasExpertProfile ? (
                   <>
                     <QuickAction to="/experts" icon={Target} label="Find new projects" />
+                    <QuickAction to="/messages" icon={MessageSquare} label="Open messages" />
                     <QuickAction to="/onboarding/expert" icon={UserCheck} label="Edit my profile" />
-                    <QuickAction to="/pricing" icon={TrendingUp} label="Upgrade to Pro" />
                   </>
                 ) : (
                   <>
                     <QuickAction to="/post-request" icon={Plus} label="Post a new project" />
+                    <QuickAction to="/messages" icon={MessageSquare} label="Open messages" />
                     <QuickAction to="/experts" icon={Briefcase} label="Browse all experts" />
                     <QuickAction to="/onboarding/expert" icon={UserCheck} label="Become an expert" />
                   </>
@@ -719,6 +720,16 @@ function ProposalCard({ proposal }: { proposal: any }) {
             <span>{proposal.estimatedDurationWeeks} weeks</span>
             <span>•</span>
             <span>{proposal.availability}</span>
+          </div>
+          <div className="mt-3">
+            <Link
+              to="/messages"
+              search={{ proposal: proposal._id }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Message client
+            </Link>
           </div>
         </div>
       </div>

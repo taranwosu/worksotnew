@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Compass, Menu, X, LayoutDashboard, LogOut, User as UserIcon, Briefcase, Search } from "lucide-react";
+import { Compass, Menu, X, LayoutDashboard, LogOut, User as UserIcon, Briefcase, Search, MessageSquare } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
 import { useQuery } from "convex/react";
@@ -18,6 +18,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     session ? {} : "skip"
   );
   const hasExpertProfile = (expertProfiles?.length ?? 0) > 0;
+  const unreadSummary = useQuery(
+    api.messages.getUnreadSummary,
+    session ? {} : "skip"
+  );
+  const unreadCount = unreadSummary?.unreadConversations ?? 0;
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -103,6 +108,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </Link>
                 )}
 
+                <Link
+                  to="/messages"
+                  className="relative flex items-center justify-center rounded-md p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  aria-label={`Messages${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-none text-white">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </Link>
+
                 <div className="relative" ref={profileRef}>
                   <button
                     onClick={() => setProfileOpen(!profileOpen)}
@@ -141,6 +159,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         >
                           <LayoutDashboard className="h-4 w-4 text-slate-400" />
                           Dashboard
+                        </Link>
+                        <Link
+                          to="/messages"
+                          onClick={() => setProfileOpen(false)}
+                          className="flex items-center justify-between gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <MessageSquare className="h-4 w-4 text-slate-400" />
+                            Messages
+                          </span>
+                          {unreadCount > 0 && (
+                            <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                              {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                          )}
                         </Link>
                         {!hasExpertProfile && (
                           <Link
@@ -232,6 +265,18 @@ to="/onboarding/expert"
                     className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
                   >
                     Dashboard
+                  </Link>
+                  <Link
+                    to="/messages"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    <span>Messages</span>
+                    {unreadCount > 0 && (
+                      <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
                   </Link>
                   {hasExpertProfile ? (
                     <Link

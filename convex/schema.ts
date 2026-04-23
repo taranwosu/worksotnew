@@ -89,4 +89,28 @@ export default defineSchema({
     .index("by_requestId", ["requestId"])
     .index("by_expertProfileId", ["expertProfileId"])
     .index("by_status", ["status"]),
+
+  // Direct 1:1 conversations between two users.
+  // userAId is always the lexicographically smaller id so a pair has one row.
+  conversations: defineTable({
+    userAId: v.string(),
+    userBId: v.string(),
+    lastMessageAt: v.number(),
+    lastMessagePreview: v.string(),
+    lastSenderId: v.optional(v.string()),
+    lastReadAtA: v.number(),
+    lastReadAtB: v.number(),
+    relatedRequestId: v.optional(v.id("clientRequests")),
+    relatedProposalId: v.optional(v.id("proposals")),
+  })
+    .index("by_pair", ["userAId", "userBId"])
+    .index("by_userA", ["userAId", "lastMessageAt"])
+    .index("by_userB", ["userBId", "lastMessageAt"]),
+
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    senderId: v.string(),
+    content: v.string(),
+  })
+    .index("by_conversation", ["conversationId"]),
 });
