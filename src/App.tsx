@@ -21,6 +21,7 @@ import { ExpertOnboardingPage } from "./pages/ExpertOnboardingPage";
 import { PostRequestPage } from "./pages/PostRequestPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MessagesPage } from "./pages/MessagesPage";
+import { ProjectWorkspacePage } from "./pages/ProjectWorkspacePage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -116,6 +117,12 @@ const messagesRoute = createRoute({
   },
 });
 
+const projectWorkspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workspace/$proposalId",
+  component: ProjectWorkspacePage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   expertsRoute,
@@ -130,6 +137,7 @@ const routeTree = rootRoute.addChildren([
   postRequestRoute,
   dashboardRoute,
   messagesRoute,
+  projectWorkspaceRoute,
 ]);
 
 const router = createRouter({
