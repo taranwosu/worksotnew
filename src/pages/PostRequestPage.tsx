@@ -4,6 +4,18 @@ import { useMutation } from "convex/react";
 import { Loader2, Plus, X, Check } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
+import {
+  Container,
+  Eyebrow,
+  Button,
+  Tag,
+  FieldInput,
+  FieldLabel,
+  FieldTextarea,
+  FieldSelect,
+  FieldHint,
+} from "@/components/primitives";
+import { cn } from "@/lib/utils";
 
 const CATEGORIES = [
   { id: "accounting", label: "Accounting & Finance" },
@@ -39,8 +51,8 @@ export function PostRequestPage() {
 
   if (isPending) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      <div className="flex min-h-[60vh] items-center justify-center bg-cream">
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -89,185 +101,363 @@ export function PostRequestPage() {
     }
   };
 
-  const canSubmit = title.trim() && description.length >= 50 && skills.length > 0 && budgetMax >= budgetMin;
+  const canSubmit =
+    title.trim() &&
+    description.length >= 50 &&
+    skills.length > 0 &&
+    budgetMax >= budgetMin;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Post a project</h1>
-        <p className="mt-2 text-slate-600">Describe your project and we'll match you with the right experts.</p>
-      </div>
+    <div className="bg-cream pb-24">
+      {/* Title band */}
+      <section className="border-b border-ink-12 pt-16 md:pt-20">
+        <Container>
+          <div className="flex items-center justify-between border-b border-ink-12 pb-6">
+            <Eyebrow index="§ 01" accent>
+              The brief
+            </Eyebrow>
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
+              ~ 10 min · A matcher reads it inside the hour
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-8 pt-10 md:grid-cols-12 md:pt-14">
+            <div className="md:col-span-8">
+              <h1 className="display-xl text-ink">
+                Tell us what
+                <br className="hidden md:block" /> needs to move.
+              </h1>
+            </div>
+            <div className="md:col-span-4 md:pt-4">
+              <p className="prose-lede">
+                Plain language beats perfect prose. Focus on the decision the
+                work informs, the start date, and the budget band you actually
+                have. We handle the rest.
+              </p>
+            </div>
+          </div>
+        </Container>
+      </section>
 
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      <Container className="mt-12">
+        {error && (
+          <div
+            role="alert"
+            className="mb-6 rounded border border-rust/30 bg-rust/5 px-4 py-3 text-[13px] text-rust"
+          >
+            {error}
+          </div>
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Project Details */}
-        <Section title="Project details">
-          <Field label="Project title">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Q1 Financial Model and Board Deck"
-              required
-              maxLength={120}
-              className="input"
-            />
-          </Field>
-          <Field label="Description" hint={`${description.length}/2000 — minimum 50 characters`}>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={6}
-              maxLength={2000}
-              required
-              placeholder="Describe the scope, deliverables, context, and any specific requirements..."
-              className="input resize-none"
-            />
-          </Field>
-          <Field label="Category">
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setCategory(cat.id)}
-                  className={`rounded-lg border-2 p-3 text-left text-sm font-medium transition-all ${
-                    category === cat.id
-                      ? "border-slate-900 bg-slate-50 text-slate-900"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                  }`}
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-10 md:grid-cols-12 md:gap-12">
+          {/* Stepper sidebar */}
+          <aside className="md:col-span-3">
+            <ol className="md:sticky md:top-28 md:space-y-2">
+              {[
+                ["01", "Project details"],
+                ["02", "Budget & timeline"],
+                ["03", "Location & contact"],
+              ].map(([n, l]) => (
+                <li
+                  key={n}
+                  className="flex items-center gap-3 border-b border-ink-10 py-3 md:border-b-0 md:py-2"
                 >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <Field label="Required skills" hint="Press Enter or + to add">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={skillInput}
-                onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
-                placeholder="e.g. Financial Modeling"
-                className="input flex-1"
-              />
-              <button type="button" onClick={addSkill} className="rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-            {skills.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {skills.map((s) => (
-                  <span key={s} className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                    {s}
-                    <button type="button" onClick={() => setSkills(skills.filter((x) => x !== s))}>
-                      <X className="h-3 w-3" />
-                    </button>
+                  <span className="font-mono text-[11px] tracking-[0.14em] text-ink-60">
+                    {n}
                   </span>
-                ))}
+                  <span className="text-[13.5px] font-medium text-ink">
+                    {l}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </aside>
+
+          <div className="space-y-10 md:col-span-9">
+            <Section title="Project details" index="01">
+              <div>
+                <FieldLabel htmlFor="title">
+                  Project title <span className="text-rust">*</span>
+                </FieldLabel>
+                <FieldInput
+                  id="title"
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Q1 financial model + board deck"
+                  required
+                  maxLength={120}
+                />
               </div>
-            )}
-          </Field>
-        </Section>
 
-        {/* Budget & Timeline */}
-        <Section title="Budget & timeline">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Budget type">
-              <select value={budgetType} onChange={(e) => setBudgetType(e.target.value)} className="input">
-                <option value="fixed">Fixed price</option>
-                <option value="hourly">Hourly</option>
-              </select>
-            </Field>
-            <Field label="Engagement type">
-              <select value={engagementType} onChange={(e) => setEngagementType(e.target.value)} className="input">
-                <option value="project">One-time project</option>
-                <option value="retainer">Ongoing retainer</option>
-                <option value="contract">Contract role</option>
-              </select>
-            </Field>
-            <Field label="Budget min (USD)">
-              <input type="number" min={0} value={budgetMin} onChange={(e) => setBudgetMin(parseInt(e.target.value) || 0)} className="input" />
-            </Field>
-            <Field label="Budget max (USD)">
-              <input type="number" min={0} value={budgetMax} onChange={(e) => setBudgetMax(parseInt(e.target.value) || 0)} className="input" />
-            </Field>
-            <Field label="Duration (weeks)">
-              <input type="number" min={1} value={durationWeeks} onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 1)} className="input" />
-            </Field>
-            <Field label="Desired start date (optional)">
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
-            </Field>
+              <div>
+                <FieldLabel htmlFor="description">
+                  Description <span className="text-rust">*</span>
+                </FieldLabel>
+                <FieldTextarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={7}
+                  maxLength={2000}
+                  required
+                  placeholder="Scope, deliverables, context, the decision the work needs to inform…"
+                />
+                <FieldHint>
+                  {description.length}/2000 · minimum 50 characters
+                </FieldHint>
+              </div>
+
+              <div>
+                <FieldLabel>Category</FieldLabel>
+                <div className="grid grid-cols-2 gap-2">
+                  {CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCategory(cat.id)}
+                      className={cn(
+                        "rounded border px-3.5 py-3 text-left text-[13.5px] font-medium transition-colors",
+                        category === cat.id
+                          ? "border-ink bg-ink text-cream"
+                          : "border-ink-12 bg-white text-ink hover:border-ink",
+                      )}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="skills">Required skills</FieldLabel>
+                <div className="flex gap-2">
+                  <FieldInput
+                    id="skills"
+                    type="text"
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSkill();
+                      }
+                    }}
+                    placeholder="e.g. Financial Modeling"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    onClick={addSkill}
+                    tone="ink"
+                    size="md"
+                    className="!px-4"
+                    aria-label="Add skill"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <FieldHint>Press Enter or + to add</FieldHint>
+                {skills.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {skills.map((s) => (
+                      <span
+                        key={s}
+                        className="inline-flex items-center gap-1.5 rounded-sm bg-ink-08 px-2.5 py-1 text-[12px] font-medium text-ink"
+                      >
+                        {s}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSkills(skills.filter((x) => x !== s))
+                          }
+                          className="text-ink-60 hover:text-ink"
+                          aria-label={`Remove ${s}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            <Section title="Budget & timeline" index="02">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FieldLabel htmlFor="budgetType">Budget type</FieldLabel>
+                  <FieldSelect
+                    id="budgetType"
+                    value={budgetType}
+                    onChange={(e) => setBudgetType(e.target.value)}
+                  >
+                    <option value="fixed">Fixed price</option>
+                    <option value="hourly">Hourly</option>
+                  </FieldSelect>
+                </div>
+                <div>
+                  <FieldLabel htmlFor="engagementType">
+                    Engagement type
+                  </FieldLabel>
+                  <FieldSelect
+                    id="engagementType"
+                    value={engagementType}
+                    onChange={(e) => setEngagementType(e.target.value)}
+                  >
+                    <option value="project">One-time project</option>
+                    <option value="retainer">Ongoing retainer</option>
+                    <option value="contract">Contract role</option>
+                  </FieldSelect>
+                </div>
+                <div>
+                  <FieldLabel htmlFor="budgetMin">Budget min (USD)</FieldLabel>
+                  <FieldInput
+                    id="budgetMin"
+                    type="number"
+                    min={0}
+                    value={budgetMin}
+                    onChange={(e) =>
+                      setBudgetMin(parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="budgetMax">Budget max (USD)</FieldLabel>
+                  <FieldInput
+                    id="budgetMax"
+                    type="number"
+                    min={0}
+                    value={budgetMax}
+                    onChange={(e) =>
+                      setBudgetMax(parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="durationWeeks">
+                    Duration (weeks)
+                  </FieldLabel>
+                  <FieldInput
+                    id="durationWeeks"
+                    type="number"
+                    min={1}
+                    value={durationWeeks}
+                    onChange={(e) =>
+                      setDurationWeeks(parseInt(e.target.value) || 1)
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="startDate">
+                    Desired start date
+                  </FieldLabel>
+                  <FieldInput
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </Section>
+
+            <Section title="Location & contact" index="03">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FieldLabel htmlFor="location">Location</FieldLabel>
+                  <FieldInput
+                    id="location"
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Remote / City, State"
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="companyName">Company name</FieldLabel>
+                  <FieldInput
+                    id="companyName"
+                    type="text"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <FieldLabel htmlFor="contactEmail">Contact email</FieldLabel>
+                  <FieldInput
+                    id="contactEmail"
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-3 rounded border border-ink-12 bg-cream-2 px-4 py-3 text-[13.5px]">
+                <input
+                  type="checkbox"
+                  checked={remoteOk}
+                  onChange={(e) => setRemoteOk(e.target.checked)}
+                  className="h-4 w-4 accent-ink"
+                />
+                <span className="font-medium text-ink">
+                  Remote engagements welcome
+                </span>
+                <Tag tone="outline" size="sm" className="ml-auto">
+                  Most briefs
+                </Tag>
+              </label>
+            </Section>
+
+            <div className="flex items-center justify-end gap-3 border-t border-ink-12 pt-6">
+              <Button
+                type="button"
+                tone="ghost"
+                size="md"
+                onClick={() => navigate({ to: "/dashboard" })}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                tone="ink"
+                size="lg"
+                disabled={!canSubmit || saving}
+                iconLeft={
+                  saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" strokeWidth={2.5} />
+                  )
+                }
+                arrow={!saving}
+              >
+                {saving ? "Filing brief…" : "File the brief"}
+              </Button>
+            </div>
           </div>
-        </Section>
-
-        {/* Location & Contact */}
-        <Section title="Location & contact">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Location">
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Remote / City, State" className="input" />
-            </Field>
-            <Field label="Company name (optional)">
-              <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="input" />
-            </Field>
-            <Field label="Contact email">
-              <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="input" />
-            </Field>
-          </div>
-          <label className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-            <input
-              type="checkbox"
-              checked={remoteOk}
-              onChange={(e) => setRemoteOk(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300"
-            />
-            <span className="font-medium text-slate-700">Remote work is acceptable</span>
-          </label>
-        </Section>
-
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-6">
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/dashboard" })}
-            className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit || saving}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-40"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {saving ? "Posting..." : "Post project"}
-          </button>
-        </div>
-      </form>
+        </form>
+      </Container>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  index,
+  children,
+}: {
+  title: string;
+  index: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-slate-900">{title}</h2>
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
-      {children}
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
-    </div>
+    <fieldset className="rounded border border-ink-12 bg-white">
+      <legend className="-ml-1 ml-5 flex items-center gap-2 bg-cream px-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
+        <span className="text-ink">{index}</span>
+        <span className="text-ink-20">/</span>
+        <span>{title}</span>
+      </legend>
+      <div className="space-y-5 p-6 md:p-8">{children}</div>
+    </fieldset>
   );
 }

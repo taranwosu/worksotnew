@@ -41,7 +41,7 @@ export function DashboardPage() {
   if (isPending) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -75,17 +75,17 @@ export function DashboardPage() {
   const isLoadingData = !expertProfiles || !clientRequests || !proposals;
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-50 via-white to-blue-50/20">
+    <div className="min-h-[calc(100vh-4rem)] bg-cream">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
         {/* Greeting Header */}
         <div className="mb-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-slate-500">{greeting}, {firstName} 👋</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              <p className="text-sm font-medium text-ink-60">{greeting}, {firstName} 👋</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink sm:text-4xl">
                 {hasExpertProfile ? "Your expert workspace" : "Your dashboard"}
               </h1>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="mt-2 text-sm text-ink-60">
                 {hasExpertProfile
                   ? "Manage your profile, proposals, and active projects in one place."
                   : "Find world-class experts for your next project."}
@@ -95,7 +95,7 @@ export function DashboardPage() {
               {!hasExpertProfile && (
                 <Link
                   to="/onboarding/expert"
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  className="flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-paper"
                 >
                   <Sparkles className="h-4 w-4" />
                   Become an expert
@@ -104,7 +104,7 @@ export function DashboardPage() {
               {hasExpertProfile ? (
                 <Link
                   to="/experts"
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800"
+                  className="flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-2"
                 >
                   <Search className="h-4 w-4" />
                   Find projects
@@ -112,7 +112,7 @@ export function DashboardPage() {
               ) : (
                 <Link
                   to="/post-request"
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800"
+                  className="flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-2"
                 >
                   <Plus className="h-4 w-4" />
                   New project
@@ -124,22 +124,22 @@ export function DashboardPage() {
 
         {/* Profile completion banner (experts only, if incomplete) */}
         {hasExpertProfile && expertProfile && profileCompleteness < 100 && (
-          <div className="mb-6 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-5">
+          <div className="mb-6 overflow-hidden rounded-lg border border-sun/40 bg-sun/10 p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-                  <TrendingUp className="h-5 w-5 text-amber-600" />
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+                  <TrendingUp className="h-5 w-5 text-sun-2" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-slate-900">
+                  <h3 className="text-sm font-semibold text-ink">
                     Your profile is {profileCompleteness}% complete
                   </h3>
-                  <p className="mt-0.5 text-xs text-slate-600">
+                  <p className="mt-0.5 text-xs text-ink-60">
                     Complete profiles get up to 5× more project invites.
                   </p>
                   <div className="mt-2.5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/80">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500"
+                      className="h-full rounded-full bg-sun transition-all duration-500"
                       style={{ width: `${profileCompleteness}%` }}
                     />
                   </div>
@@ -147,7 +147,7 @@ export function DashboardPage() {
               </div>
               <Link
                 to="/onboarding/expert"
-                className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800"
+                className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-2"
               >
                 Complete profile
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -231,7 +231,7 @@ export function DashboardPage() {
 
         {/* Expert Profile Card (if expert) */}
         {hasExpertProfile && expertProfile && (
-          <div className="mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 shadow-sm">
+          <div className="mb-10 overflow-hidden rounded-lg border border-ink-12 bg-ink shadow-sm">
             <div className="relative p-6 sm:p-8">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.1),transparent_50%)]" />
               <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -243,18 +243,18 @@ export function DashboardPage() {
                       className="h-16 w-16 rounded-full border-2 border-white/20 object-cover"
                     />
                   ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-br from-blue-500 to-indigo-600 text-xl font-bold text-white">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/20 bg-ink text-xl font-bold text-white">
                       {expertProfile.fullName.charAt(0)}
                     </div>
                   )}
                   <div className="flex-1">
-                    <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-moss/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sun">
+                      <span className="h-1.5 w-1.5 rounded-full bg-moss" />
                       {expertProfile.isPublished ? "Active & visible" : "Draft"}
                     </div>
                     <h2 className="text-xl font-bold text-white sm:text-2xl">{expertProfile.fullName}</h2>
-                    <p className="mt-0.5 text-sm text-slate-300">{expertProfile.headline}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                    <p className="mt-0.5 text-sm text-cream/70">{expertProfile.headline}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-40">
                       <span>📍 {expertProfile.location}</span>
                       <span>•</span>
                       <span>{expertProfile.yearsExperience} years exp</span>
@@ -338,12 +338,12 @@ export function DashboardPage() {
               count={(hasExpertProfile ? proposals?.length : clientRequests?.length) ?? 0}
               action={
                 hasExpertProfile ? (
-                  <Link to="/experts" className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  <Link to="/experts" className="flex items-center gap-1 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper">
                     <Search className="h-3.5 w-3.5" />
                     Find projects
                   </Link>
                 ) : (
-                  <Link to="/post-request" className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  <Link to="/post-request" className="flex items-center gap-1 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper">
                     <Plus className="h-3.5 w-3.5" />
                     New
                   </Link>
@@ -435,9 +435,9 @@ export function DashboardPage() {
           {/* Sidebar column */}
           <div className="space-y-6 lg:col-span-2">
             {/* Quick actions */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                <Zap className="h-4 w-4 text-amber-500" />
+            <div className="rounded-lg border border-ink-12 bg-white p-6 shadow-sm">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                <Zap className="h-4 w-4 text-sun" />
                 Quick actions
               </h3>
               <div className="mt-4 space-y-1">
@@ -459,9 +459,9 @@ export function DashboardPage() {
             </div>
 
             {/* Notifications / Tips */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                <Bell className="h-4 w-4 text-slate-400" />
+            <div className="rounded-lg border border-ink-12 bg-white p-6 shadow-sm">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                <Bell className="h-4 w-4 text-ink-40" />
                 Notifications
               </h3>
               <div className="mt-4 space-y-3">
@@ -496,29 +496,29 @@ export function DashboardPage() {
                   />
                 )}
               </div>
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <p className="text-xs text-slate-500">
+              <div className="mt-4 border-t border-ink-10 pt-4">
+                <p className="text-xs text-ink-60">
                   Full notification center coming soon.
                 </p>
               </div>
             </div>
 
             {/* Tips card */}
-            <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
+            <div className="rounded-lg border border-sun/40 bg-cream-2 p-6">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm">
-                <Sparkles className="h-4 w-4 text-blue-600" />
+                <Sparkles className="h-4 w-4 text-ink" />
               </div>
-              <h3 className="mt-3 text-sm font-semibold text-slate-900">
+              <h3 className="mt-3 text-sm font-semibold text-ink">
                 {hasExpertProfile ? "Boost your profile" : "Pro tip"}
               </h3>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-ink-60">
                 {hasExpertProfile
                   ? "Profiles with portfolio case studies get 3× more project invites. Add yours to stand out."
                   : "Be specific in your project brief — projects with clear requirements get matched 2× faster."}
               </p>
               <Link
                 to={hasExpertProfile ? "/for-experts" : "/how-it-works"}
-                className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-800"
+                className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink hover:text-ink"
               >
                 Learn more
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -568,26 +568,26 @@ function StatCard({
   loading?: boolean;
 }) {
   const accents = {
-    blue: "bg-blue-50 text-blue-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-700",
-    slate: "bg-slate-100 text-slate-700",
+    blue: "bg-sun/15 text-ink",
+    emerald: "bg-moss/10 text-moss",
+    amber: "bg-sun/15 text-ink",
+    slate: "bg-cream-2 text-ink",
   };
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+    <div className="rounded-lg border border-ink-12 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wider text-ink-60">{label}</span>
         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accents[accent]}`}>
           <Icon className="h-4 w-4" />
         </div>
       </div>
       <div className="mt-3">
         {loading ? (
-          <div className="h-8 w-16 animate-pulse rounded bg-slate-100" />
+          <div className="h-8 w-16 animate-pulse rounded bg-cream-2" />
         ) : (
-          <div className="text-2xl font-bold text-slate-900">{value}</div>
+          <div className="text-2xl font-bold text-ink">{value}</div>
         )}
-        <div className="mt-0.5 text-xs text-slate-500">{sublabel}</div>
+        <div className="mt-0.5 text-xs text-ink-60">{sublabel}</div>
       </div>
     </div>
   );
@@ -609,21 +609,21 @@ function ActionCard({
   accent: "slate" | "blue" | "amber";
 }) {
   const accents = {
-    slate: "bg-slate-100 text-slate-700",
-    blue: "bg-blue-50 text-blue-700",
-    amber: "bg-amber-50 text-amber-700",
+    slate: "bg-cream-2 text-ink",
+    blue: "bg-sun/15 text-ink",
+    amber: "bg-sun/15 text-ink",
   };
   return (
     <Link
       to={to}
-      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+      className="group flex flex-col rounded-lg border border-ink-12 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:border-ink-20 hover:shadow-md"
     >
       <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg ${accents[accent]}`}>
         <Icon className="h-5 w-5" />
       </div>
-      <h3 className="font-semibold text-slate-900">{title}</h3>
-      <p className="mt-1 flex-1 text-sm text-slate-600">{description}</p>
-      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-slate-900 group-hover:gap-1.5 group-hover:text-slate-700">
+      <h3 className="font-semibold text-ink">{title}</h3>
+      <p className="mt-1 flex-1 text-sm text-ink-60">{description}</p>
+      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ink group-hover:gap-1.5 group-hover:text-ink">
         {cta} <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
       </span>
     </Link>
@@ -649,11 +649,11 @@ function Section({
     <section>
       <div className="mb-4 flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">
+          <h2 className="text-lg font-semibold text-ink">
             {title}
-            {!hideCount && <span className="ml-1 text-sm font-normal text-slate-500">({count})</span>}
+            {!hideCount && <span className="ml-1 text-sm font-normal text-ink-60">({count})</span>}
           </h2>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+          {subtitle && <p className="mt-0.5 text-xs text-ink-60">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -676,52 +676,52 @@ function InsightCard({
   accent: "blue" | "emerald";
 }) {
   const accents = {
-    blue: "bg-blue-50 text-blue-700",
-    emerald: "bg-emerald-50 text-emerald-700",
+    blue: "bg-sun/15 text-ink",
+    emerald: "bg-moss/10 text-moss",
   };
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-ink-12 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500">{title}</span>
+        <span className="text-xs font-medium text-ink-60">{title}</span>
         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accents[accent]}`}>
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className="mt-3 text-2xl font-bold text-slate-900">{value}</div>
-      <p className="mt-1 text-xs text-slate-500">{description}</p>
+      <div className="mt-3 text-2xl font-bold text-ink">{value}</div>
+      <p className="mt-1 text-xs text-ink-60">{description}</p>
     </div>
   );
 }
 
 function ProjectCard({ request }: { request: any }) {
   return (
-    <div className="group rounded-xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-md">
+    <div className="group rounded-lg border border-ink-12 bg-white p-5 transition-all hover:border-ink-20 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
               request.status === "open"
-                ? "bg-emerald-50 text-emerald-700"
+                ? "bg-moss/10 text-moss"
                 : request.status === "in_progress"
-                ? "bg-blue-50 text-blue-700"
-                : "bg-slate-100 text-slate-600"
+                ? "bg-sun/15 text-ink"
+                : "bg-cream-2 text-ink-60"
             }`}>
               <span className={`h-1.5 w-1.5 rounded-full ${
-                request.status === "open" ? "bg-emerald-500"
-                : request.status === "in_progress" ? "bg-blue-500"
-                : "bg-slate-400"
+                request.status === "open" ? "bg-moss"
+                : request.status === "in_progress" ? "bg-ink"
+                : "bg-ink-40"
               }`} />
               {request.status.replace("_", " ")}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+            <span className="inline-flex items-center gap-1 rounded-full bg-cream-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-60">
               {request.category}
             </span>
-            <span className="text-xs text-slate-500">{request.proposalCount} proposals</span>
+            <span className="text-xs text-ink-60">{request.proposalCount} proposals</span>
           </div>
-          <h3 className="mt-2 font-semibold text-slate-900">{request.title}</h3>
-          <p className="mt-1 line-clamp-2 text-sm text-slate-600">{request.description}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-            <span className="font-semibold text-slate-700">
+          <h3 className="mt-2 font-semibold text-ink">{request.title}</h3>
+          <p className="mt-1 line-clamp-2 text-sm text-ink-60">{request.description}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-60">
+            <span className="font-semibold text-ink">
               ${request.budgetMin.toLocaleString()}–${request.budgetMax.toLocaleString()}
             </span>
             <span>•</span>
@@ -744,37 +744,37 @@ function EngagementCard({ engagement }: { engagement: any }) {
     <Link
       to="/workspace/$proposalId"
       params={{ proposalId: engagement.proposalId }}
-      className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-md"
+      className="group flex flex-col rounded-lg border border-ink-12 bg-white p-5 transition-all hover:border-ink-20 hover:shadow-md"
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-sun/15 text-ink">
           <FolderKanban className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+            <span className="inline-flex items-center gap-1 rounded-full bg-cream-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-60">
               {engagement.role}
             </span>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-60">
               {engagement.milestoneCount} milestone{engagement.milestoneCount === 1 ? "" : "s"}
             </span>
           </div>
-          <p className="mt-1.5 truncate font-semibold text-slate-900">
+          <p className="mt-1.5 truncate font-semibold text-ink">
             {engagement.requestTitle}
           </p>
           {engagement.totalAmount > 0 && (
             <>
               <div className="mt-3 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1 text-slate-600">
+                <span className="flex items-center gap-1 text-ink-60">
                   <CircleDollarSign className="h-3 w-3" />
                   {formatMoney(engagement.paidAmount, engagement.currency)} of{" "}
                   {formatMoney(engagement.totalAmount, engagement.currency)}
                 </span>
-                <span className="font-semibold text-slate-900">{pct}%</span>
+                <span className="font-semibold text-ink">{pct}%</span>
               </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-cream-2">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all"
+                  className="h-full rounded-full bg-moss transition-all"
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -782,7 +782,7 @@ function EngagementCard({ engagement }: { engagement: any }) {
           )}
         </div>
       </div>
-      <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-slate-700 group-hover:text-slate-900">
+      <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-ink group-hover:text-ink">
         Open workspace
         <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
       </span>
@@ -804,30 +804,30 @@ function formatMoney(amount: number, currency: string): string {
 
 function ProposalCard({ proposal }: { proposal: any }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-md">
+    <div className="rounded-lg border border-ink-12 bg-white p-5 transition-all hover:border-ink-20 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-              proposal.status === "pending" ? "bg-amber-50 text-amber-700"
-              : proposal.status === "accepted" ? "bg-emerald-50 text-emerald-700"
-              : proposal.status === "rejected" ? "bg-rose-50 text-rose-700"
-              : "bg-slate-100 text-slate-600"
+              proposal.status === "pending" ? "bg-sun/15 text-ink"
+              : proposal.status === "accepted" ? "bg-moss/10 text-moss"
+              : proposal.status === "rejected" ? "bg-rust/10 text-rust"
+              : "bg-cream-2 text-ink-60"
             }`}>
               <span className={`h-1.5 w-1.5 rounded-full ${
-                proposal.status === "pending" ? "bg-amber-500"
-                : proposal.status === "accepted" ? "bg-emerald-500"
-                : proposal.status === "rejected" ? "bg-rose-500"
-                : "bg-slate-400"
+                proposal.status === "pending" ? "bg-sun"
+                : proposal.status === "accepted" ? "bg-moss"
+                : proposal.status === "rejected" ? "bg-rust"
+                : "bg-ink-40"
               }`} />
               {proposal.status}
             </span>
-            <span className="text-xs font-semibold text-slate-700">
+            <span className="text-xs font-semibold text-ink">
               ${proposal.proposedRate}/{proposal.rateType}
             </span>
           </div>
-          <p className="mt-3 line-clamp-3 text-sm text-slate-600">{proposal.coverLetter}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+          <p className="mt-3 line-clamp-3 text-sm text-ink-60">{proposal.coverLetter}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-60">
             <span>{proposal.estimatedDurationWeeks} weeks</span>
             <span>•</span>
             <span>{proposal.availability}</span>
@@ -836,7 +836,7 @@ function ProposalCard({ proposal }: { proposal: any }) {
             <Link
               to="/messages"
               search={{ proposal: proposal._id }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
             >
               <MessageSquare className="h-3.5 w-3.5" />
               Message client
@@ -852,13 +852,13 @@ function QuickAction({ to, icon: Icon, label }: { to: string; icon: any; label: 
   return (
     <Link
       to={to}
-      className="group flex items-center justify-between gap-2 rounded-lg px-3 py-2 -mx-1 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+      className="group flex items-center justify-between gap-2 rounded-lg px-3 py-2 -mx-1 text-sm text-ink transition-colors hover:bg-paper"
     >
       <span className="flex items-center gap-2.5">
-        <Icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+        <Icon className="h-4 w-4 text-ink-40 group-hover:text-ink-60" />
         {label}
       </span>
-      <ArrowRight className="h-3.5 w-3.5 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-slate-500" />
+      <ArrowRight className="h-3.5 w-3.5 text-cream/70 transition-all group-hover:translate-x-0.5 group-hover:text-ink-60" />
     </Link>
   );
 }
@@ -875,9 +875,9 @@ function ActivityItem({
   color: "emerald" | "blue" | "amber";
 }) {
   const colors = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    blue: "bg-blue-50 text-blue-700",
-    amber: "bg-amber-50 text-amber-700",
+    emerald: "bg-moss/10 text-moss",
+    blue: "bg-sun/15 text-ink",
+    amber: "bg-sun/15 text-ink",
   };
   return (
     <div className="flex items-start gap-3">
@@ -885,8 +885,8 @@ function ActivityItem({
         <Icon className="h-3.5 w-3.5" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-slate-700 line-clamp-1">{text}</p>
-        <p className="mt-0.5 text-xs text-slate-400">{time}</p>
+        <p className="text-sm text-ink line-clamp-1">{text}</p>
+        <p className="mt-0.5 text-xs text-ink-40">{time}</p>
       </div>
     </div>
   );
@@ -896,7 +896,7 @@ function SkeletonList() {
   return (
     <div className="space-y-3">
       {[0, 1].map((i) => (
-        <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
+        <div key={i} className="h-28 animate-pulse rounded-lg bg-cream-2" />
       ))}
     </div>
   );
@@ -914,15 +914,15 @@ function EmptyState({
   cta: { label: string; to: string };
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 py-12 text-center">
+    <div className="rounded-lg border border-dashed border-ink-20 bg-paper/50 py-12 text-center">
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
-        <Icon className="h-5 w-5 text-slate-400" />
+        <Icon className="h-5 w-5 text-ink-40" />
       </div>
-      <h3 className="mt-4 text-sm font-semibold text-slate-900">{title}</h3>
-      <p className="mx-auto mt-1 max-w-sm text-sm text-slate-600">{description}</p>
+      <h3 className="mt-4 text-sm font-semibold text-ink">{title}</h3>
+      <p className="mx-auto mt-1 max-w-sm text-sm text-ink-60">{description}</p>
       <Link
         to={cta.to}
-        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-ink-2"
       >
         {cta.label}
         <ArrowRight className="h-3.5 w-3.5" />

@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Compass, Mail, Lock, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   AUTH_CONFIG,
   signInWithEmail,
   signInWithGoogle,
 } from "@/lib/auth-client";
+import { AuthShell } from "@/components/AuthShell";
+import {
+  Button,
+  FieldInput,
+  FieldLabel,
+  Tag,
+} from "@/components/primitives";
 
 export function SignInPage() {
   const navigate = useNavigate();
@@ -28,99 +35,143 @@ export function SignInPage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 shadow-sm">
-              <Compass className="h-5 w-5 text-white" strokeWidth={2.25} />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-lg font-semibold tracking-tight text-slate-900">WorkSoy</span>
-              <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">Expert Network</span>
-            </div>
-          </Link>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Welcome back</h1>
-            <p className="mt-1 text-sm text-slate-600">Sign in to your WorkSoy account</p>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                  required
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                  required
-                  minLength={8}
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-60"
-            >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {isLoading ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
-
-          {AUTH_CONFIG.googleEnabled ? (
-            <>
-              <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-xs font-medium uppercase tracking-wider text-slate-400">Or</span>
-                <div className="h-px flex-1 bg-slate-200" />
-              </div>
-              <button
-                type="button"
-                onClick={() => { void signInWithGoogle(); }}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50"
-              >
-                Continue with Google
-              </button>
-            </>
-          ) : null}
-
-          <p className="mt-6 text-center text-sm text-slate-600">
-            Don't have an account?{" "}
-            <Link to="/signup" className="font-semibold text-slate-900 hover:underline">
-              Sign up
-            </Link>
+    <AuthShell
+      step="§ 01"
+      kicker="Return to the desk"
+      display={
+        <>
+          Back to
+          <br />
+          your briefs.
+        </>
+      }
+      lede="Pick up where you left off — active engagements, shortlists in review, and the inbox with your matcher."
+      quote={{
+        text:
+          "The dashboard is where I actually run procurement. Everything is one click from an SOW.",
+        author: "Elena Marsh",
+        role: "Head of Ops, Hearth",
+      }}
+    >
+      <div>
+        <div className="flex items-center justify-between">
+          <Tag tone="outline" size="sm">Sign in</Tag>
+          <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
+            Members · 2026
           </p>
         </div>
+
+        <h2 className="mt-6 font-display text-[clamp(1.75rem,3vw,2.25rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink">
+          Welcome back.
+        </h2>
+        <p className="mt-2 text-[14px] text-ink-60">
+          New here?{" "}
+          <Link to="/signup" className="link-sweep font-semibold text-ink">
+            Create an account
+          </Link>
+          .
+        </p>
+
+        {error && (
+          <div
+            role="alert"
+            className="mt-6 rounded border border-rust/30 bg-rust/5 px-4 py-3 text-[13px] text-rust"
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+          <div>
+            <FieldLabel htmlFor="email">Work email</FieldLabel>
+            <FieldInput
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError(null);
+              }}
+              placeholder="you@company.com"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="password">Password</FieldLabel>
+              <button
+                type="button"
+                className="text-[12px] text-ink-60 hover:text-ink"
+              >
+                Forgot?
+              </button>
+            </div>
+            <FieldInput
+              id="password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError(null);
+              }}
+              placeholder="••••••••"
+            />
+          </div>
+
+          <Button
+            tone="ink"
+            size="lg"
+            type="submit"
+            disabled={isLoading}
+            className="w-full"
+            iconLeft={
+              isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null
+            }
+          >
+            {isLoading ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+
+        {AUTH_CONFIG.googleEnabled ? (
+          <>
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-ink-12" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-40">
+                Or
+              </span>
+              <div className="h-px flex-1 bg-ink-12" />
+            </div>
+            <Button
+              tone="cream"
+              size="lg"
+              type="button"
+              className="w-full"
+              onClick={() => {
+                void signInWithGoogle();
+              }}
+            >
+              Continue with Google
+            </Button>
+          </>
+        ) : null}
+
+        <p className="mt-8 text-[11.5px] leading-relaxed text-ink-60">
+          By signing in you agree to our{" "}
+          <Link to="/contact" className="link-sweep text-ink">
+            Terms
+          </Link>{" "}
+          &amp;{" "}
+          <Link to="/contact" className="link-sweep text-ink">
+            Privacy
+          </Link>
+          . WorkSoy never sells member data.
+        </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }

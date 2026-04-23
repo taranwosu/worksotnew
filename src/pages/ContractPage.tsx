@@ -31,7 +31,7 @@ export function ContractPage() {
   if (isPending) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -44,13 +44,13 @@ export function ContractPage() {
   if (contract === null) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-xl font-semibold text-slate-900">Contract not found</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink">Contract not found</h1>
+        <p className="mt-2 text-sm text-ink-60">
           This contract may have been cancelled or you don't have access.
         </p>
         <Link
           to="/dashboard"
-          className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-slate-900"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ink"
         >
           Back to dashboard
         </Link>
@@ -61,7 +61,7 @@ export function ContractPage() {
   if (!contract) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -130,7 +130,7 @@ function ContractView({ contract }: { contract: any }) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link
           to="/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-60 hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to dashboard
@@ -139,7 +139,7 @@ function ContractView({ contract }: { contract: any }) {
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
           >
             <Printer className="h-3.5 w-3.5" />
             Print / export
@@ -147,8 +147,8 @@ function ContractView({ contract }: { contract: any }) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 print:border-b print:bg-white">
+      <div className="overflow-hidden rounded-lg border border-ink-12 bg-white shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ink-12 bg-cream p-6 print:border-b print:bg-white">
           <div>
             <div
               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${statusBadge.badge}`}
@@ -156,25 +156,25 @@ function ContractView({ contract }: { contract: any }) {
               <span className={`h-1.5 w-1.5 rounded-full ${statusBadge.dot}`} />
               {statusBadge.label}
             </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
               {contract.title}
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-ink-60">
               Statement of Work · Version {contract.version}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-60">
               Total value
             </p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
+            <p className="mt-1 text-2xl font-bold text-ink">
               {formatCurrency(contract.amount, contract.currency)}
             </p>
-            <p className="text-[11px] text-slate-500">{contract.rateType}</p>
+            <p className="text-[11px] text-ink-60">{contract.rateType}</p>
           </div>
         </div>
 
-        <div className="grid gap-4 border-b border-slate-100 p-6 sm:grid-cols-2 print:border-b">
+        <div className="grid gap-4 border-b border-ink-10 p-6 sm:grid-cols-2 print:border-b">
           <PartyBlock label="Client" user={contract.client} />
           <PartyBlock label="Expert" user={contract.expert} />
         </div>
@@ -185,12 +185,12 @@ function ContractView({ contract }: { contract: any }) {
           ) : (
             <>
               <Section title="Scope">
-                <p className="whitespace-pre-wrap text-sm text-slate-700">
+                <p className="whitespace-pre-wrap text-sm text-ink">
                   {contract.scope}
                 </p>
               </Section>
               <Section title="Deliverables">
-                <p className="whitespace-pre-wrap text-sm text-slate-700">
+                <p className="whitespace-pre-wrap text-sm text-ink">
                   {contract.deliverables}
                 </p>
               </Section>
@@ -205,7 +205,7 @@ function ContractView({ contract }: { contract: any }) {
                 />
               </div>
               <Section title="Terms & Conditions">
-                <p className="whitespace-pre-wrap text-sm text-slate-700">
+                <p className="whitespace-pre-wrap text-sm text-ink">
                   {contract.terms}
                 </p>
               </Section>
@@ -215,7 +215,7 @@ function ContractView({ contract }: { contract: any }) {
           <SignatureBlock contract={contract} />
 
           {contract.status === "signed" && (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            <div className="flex items-center gap-2 rounded-lg border border-moss/40 bg-moss/10 p-3 text-sm text-moss">
               <ShieldCheck className="h-5 w-5" />
               <span>
                 Contract executed on{" "}
@@ -226,25 +226,25 @@ function ContractView({ contract }: { contract: any }) {
           )}
 
           {contract.status === "cancelled" && (
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <div className="flex items-center gap-2 rounded-lg border border-ink-12 bg-paper p-3 text-sm text-ink">
               <AlertTriangle className="h-5 w-5" />
               This contract was cancelled and is no longer in effect.
             </div>
           )}
 
           {error && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+            <div className="rounded-lg border border-rust/40 bg-rust/10 p-3 text-sm text-rust">
               {error}
             </div>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 p-4 print:hidden">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-ink-10 bg-paper/50 p-4 print:hidden">
           {canEdit && !editing && (
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
             >
               <Pencil className="h-3.5 w-3.5" />
               Edit draft
@@ -267,7 +267,7 @@ function ContractView({ contract }: { contract: any }) {
                     terms: contract.terms,
                   });
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
               >
                 <XIcon className="h-3.5 w-3.5" />
                 Cancel edits
@@ -276,7 +276,7 @@ function ContractView({ contract }: { contract: any }) {
                 type="button"
                 disabled={busy}
                 onClick={onSaveDraft}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:bg-ink-2 disabled:opacity-50"
               >
                 {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Save draft
@@ -290,7 +290,7 @@ function ContractView({ contract }: { contract: any }) {
               onClick={() =>
                 run(() => sendContract({ contractId: contract._id }))
               }
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-ink-2 disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
               Send to expert
@@ -303,7 +303,7 @@ function ContractView({ contract }: { contract: any }) {
               onClick={() =>
                 run(() => cancelContract({ contractId: contract._id }))
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rust/40 bg-white px-3 py-1.5 text-xs font-semibold text-rust hover:bg-rust/10"
             >
               Cancel contract
             </button>
@@ -314,7 +314,7 @@ function ContractView({ contract }: { contract: any }) {
         </div>
       </div>
 
-      <p className="mt-4 text-center text-xs text-slate-400 print:hidden">
+      <p className="mt-4 text-center text-xs text-ink-40 print:hidden">
         Signatures are captured in-app with your typed name, timestamp, and a
         record of your browser. For regulated industries requiring
         DocuSign/Dropbox Sign, we can route the signing step through a
@@ -347,7 +347,7 @@ function EditForm({
           value={draft.title}
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           maxLength={200}
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
         />
       </FieldGroup>
       <FieldGroup label="Scope">
@@ -355,7 +355,7 @@ function EditForm({
           value={draft.scope}
           onChange={(e) => setDraft({ ...draft, scope: e.target.value })}
           rows={5}
-          className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          className="w-full resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
         />
       </FieldGroup>
       <FieldGroup label="Deliverables">
@@ -365,7 +365,7 @@ function EditForm({
             setDraft({ ...draft, deliverables: e.target.value })
           }
           rows={4}
-          className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          className="w-full resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
         />
       </FieldGroup>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -376,7 +376,7 @@ function EditForm({
             step="any"
             value={draft.amount}
             onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
           />
         </FieldGroup>
         <FieldGroup label="Start date">
@@ -384,7 +384,7 @@ function EditForm({
             type="date"
             value={draft.startDate}
             onChange={(e) => setDraft({ ...draft, startDate: e.target.value })}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
           />
         </FieldGroup>
         <FieldGroup label="End date">
@@ -392,7 +392,7 @@ function EditForm({
             type="date"
             value={draft.endDate}
             onChange={(e) => setDraft({ ...draft, endDate: e.target.value })}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
           />
         </FieldGroup>
       </div>
@@ -401,7 +401,7 @@ function EditForm({
           value={draft.terms}
           onChange={(e) => setDraft({ ...draft, terms: e.target.value })}
           rows={12}
-          className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono"
+          className="w-full resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-xs font-mono"
         />
       </FieldGroup>
     </div>
@@ -453,7 +453,7 @@ function SignButton({
       <button
         type="button"
         onClick={() => setShowing(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-moss px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-moss"
       >
         <FileSignature className="h-4 w-4" />
         Sign as {role}
@@ -462,15 +462,15 @@ function SignButton({
   }
 
   return (
-    <div className="w-full rounded-xl border border-slate-200 bg-white p-4 sm:max-w-md">
-      <h3 className="text-sm font-semibold text-slate-900">Sign this contract</h3>
-      <p className="mt-1 text-xs text-slate-500">
+    <div className="w-full rounded-lg border border-ink-12 bg-white p-4 sm:max-w-md">
+      <h3 className="text-sm font-semibold text-ink">Sign this contract</h3>
+      <p className="mt-1 text-xs text-ink-60">
         By signing, you create a legally binding agreement. A record of your
         name, the signing time, and your browser will be stored.
       </p>
       <div className="mt-3 space-y-3">
         <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-ink-60">
             Full legal name
           </label>
           <input
@@ -479,29 +479,29 @@ function SignButton({
             onChange={(e) => setName(e.target.value)}
             placeholder="Type your full legal name"
             maxLength={120}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-serif italic"
+            className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm font-serif italic"
             style={{ fontSize: "18px" }}
           />
         </div>
-        <label className="flex items-start gap-2 text-xs text-slate-600">
+        <label className="flex items-start gap-2 text-xs text-ink-60">
           <input
             type="checkbox"
             checked={ack}
             onChange={(e) => setAck(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300"
+            className="mt-0.5 h-3.5 w-3.5 rounded border-ink-20"
           />
           <span>
             I agree to the scope, deliverables, amount, and terms in this
             contract and consent to use an electronic signature.
           </span>
         </label>
-        {error && <p className="text-xs text-rose-600">{error}</p>}
+        {error && <p className="text-xs text-rust">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={() => setShowing(false)}
             disabled={busy}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
           >
             Cancel
           </button>
@@ -509,7 +509,7 @@ function SignButton({
             type="button"
             onClick={onSign}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-moss px-3 py-1.5 text-xs font-semibold text-white hover:bg-moss disabled:opacity-50"
           >
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Sign
@@ -550,45 +550,45 @@ function SignatureCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 ${
+      className={`rounded-lg border p-4 ${
         signature
-          ? "border-emerald-200 bg-emerald-50/50"
-          : "border-dashed border-slate-300 bg-slate-50/50"
+          ? "border-moss/40 bg-moss/10/50"
+          : "border-dashed border-ink-20 bg-paper/50"
       }`}
     >
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-60">
           {role}
         </p>
         {signature ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-moss">
             <CheckCircle2 className="h-3 w-3" /> Signed
           </span>
         ) : (
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-40">
             Pending
           </span>
         )}
       </div>
-      <p className="mt-2 text-sm font-semibold text-slate-900">{user.name}</p>
+      <p className="mt-2 text-sm font-semibold text-ink">{user.name}</p>
       {user.email && (
-        <p className="text-xs text-slate-500">{user.email}</p>
+        <p className="text-xs text-ink-60">{user.email}</p>
       )}
       {signature ? (
-        <div className="mt-3 border-t border-emerald-200 pt-3">
+        <div className="mt-3 border-t border-moss/40 pt-3">
           <p
-            className="font-serif italic text-slate-900"
+            className="font-serif italic text-ink"
             style={{ fontSize: "20px" }}
           >
             {signature.name}
           </p>
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="mt-1 text-[11px] text-ink-60">
             Signed {formatDateTime(signature.signedAt)}
           </p>
         </div>
       ) : (
-        <div className="mt-3 border-t border-slate-200 pt-3">
-          <p className="text-[11px] italic text-slate-400">
+        <div className="mt-3 border-t border-ink-12 pt-3">
+          <p className="text-[11px] italic text-ink-40">
             Awaiting signature
           </p>
         </div>
@@ -606,7 +606,7 @@ function PartyBlock({
 }) {
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-60">
         {label}
       </p>
       <div className="mt-2 flex items-center gap-3">
@@ -617,14 +617,14 @@ function PartyBlock({
             className="h-9 w-9 rounded-full object-cover"
           />
         ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-semibold text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
             {user.name.charAt(0).toUpperCase()}
           </div>
         )}
         <div>
-          <p className="text-sm font-semibold text-slate-900">{user.name}</p>
+          <p className="text-sm font-semibold text-ink">{user.name}</p>
           {user.email && (
-            <p className="text-xs text-slate-500">{user.email}</p>
+            <p className="text-xs text-ink-60">{user.email}</p>
           )}
         </div>
       </div>
@@ -641,7 +641,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-60">
         {title}
       </h2>
       <div className="mt-2">{children}</div>
@@ -651,11 +651,11 @@ function Section({
 
 function DetailBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+    <div className="rounded-lg border border-ink-12 bg-paper p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-60">
         {label}
       </p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -669,7 +669,7 @@ function FieldGroup({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-60">
         {label}
       </label>
       {children}
@@ -683,23 +683,23 @@ const statusStyles: Record<
 > = {
   draft: {
     label: "Draft",
-    badge: "bg-slate-100 text-slate-700",
-    dot: "bg-slate-400",
+    badge: "bg-cream-2 text-ink",
+    dot: "bg-ink-40",
   },
   sent: {
     label: "Awaiting signature",
-    badge: "bg-amber-50 text-amber-700",
-    dot: "bg-amber-500",
+    badge: "bg-sun/15 text-ink",
+    dot: "bg-sun",
   },
   signed: {
     label: "Executed",
-    badge: "bg-emerald-50 text-emerald-700",
-    dot: "bg-emerald-500",
+    badge: "bg-moss/10 text-moss",
+    dot: "bg-moss",
   },
   cancelled: {
     label: "Cancelled",
-    badge: "bg-rose-50 text-rose-700",
-    dot: "bg-rose-500",
+    badge: "bg-rust/10 text-rust",
+    dot: "bg-rust",
   },
 };
 

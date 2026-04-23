@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Compass, Mail, Lock, User, Loader2, Briefcase, UserCheck } from "lucide-react";
+import { Loader2, Briefcase, UserCheck } from "lucide-react";
 import {
   AUTH_CONFIG,
   signUpWithEmail,
   signInWithGoogle,
 } from "@/lib/auth-client";
+import { AuthShell } from "@/components/AuthShell";
+import {
+  Button,
+  FieldInput,
+  FieldLabel,
+  Tag,
+} from "@/components/primitives";
+import { cn } from "@/lib/utils";
 
 type Role = "client" | "expert";
 
@@ -28,7 +36,6 @@ export function SignUpPage() {
       setError(result.error?.message ?? "Sign up failed");
       return;
     }
-    // Experts go to onboarding, clients to dashboard
     if (role === "expert") {
       navigate({ to: "/onboarding/expert" });
     } else {
@@ -37,143 +44,228 @@ export function SignUpPage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 shadow-sm">
-              <Compass className="h-5 w-5 text-white" strokeWidth={2.25} />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-lg font-semibold tracking-tight text-slate-900">WorkSoy</span>
-              <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">Expert Network</span>
-            </div>
-          </Link>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Create your account</h1>
-            <p className="mt-1 text-sm text-slate-600">Join the premium expert network</p>
-          </div>
-
-          <div className="mb-5 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setRole("client")}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-4 text-center transition-all ${
-                role === "client"
-                  ? "border-slate-900 bg-slate-50"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-              }`}
-            >
-              <Briefcase className="h-5 w-5 text-slate-700" />
-              <span className="text-sm font-semibold text-slate-900">I'm hiring</span>
-              <span className="text-xs text-slate-500">Find an expert</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole("expert")}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-4 text-center transition-all ${
-                role === "expert"
-                  ? "border-slate-900 bg-slate-50"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-              }`}
-            >
-              <UserCheck className="h-5 w-5 text-slate-700" />
-              <span className="text-sm font-semibold text-slate-900">I'm an expert</span>
-              <span className="text-xs text-slate-500">Find work</span>
-            </button>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Full name</label>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => { setName(e.target.value); setError(null); }}
-                  required
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  placeholder="Jane Smith"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                  required
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                  required
-                  minLength={8}
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  placeholder="At least 8 characters"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-60"
-            >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {isLoading ? "Creating account..." : "Create account"}
-            </button>
-          </form>
-
-          {AUTH_CONFIG.googleEnabled ? (
-            <>
-              <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-xs font-medium uppercase tracking-wider text-slate-400">Or</span>
-                <div className="h-px flex-1 bg-slate-200" />
-              </div>
-              <button
-                type="button"
-                onClick={() => { void signInWithGoogle(); }}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50"
-              >
-                Continue with Google
-              </button>
-            </>
-          ) : null}
-
-          <p className="mt-6 text-center text-sm text-slate-600">
-            Already have an account?{" "}
-            <Link to="/signin" className="font-semibold text-slate-900 hover:underline">
-              Sign in
-            </Link>
+    <AuthShell
+      step="§ 01"
+      kicker={role === "expert" ? "Roster application" : "Open a client account"}
+      display={
+        role === "expert" ? (
+          <>
+            Join the
+            <br />
+            <span className="italic">roster</span>.
+          </>
+        ) : (
+          <>
+            Hire the
+            <br />
+            right <span className="italic">hands</span>.
+          </>
+        )
+      }
+      lede={
+        role === "expert"
+          ? "Pre-qualified briefs, escrow-backed payouts, and counter-signed SOWs — so you can focus on the work, not the sell."
+          : "Brief us in ten minutes. Meet three hand-matched finalists inside 48 hours and sign the SOW by Friday."
+      }
+      quote={{
+        text:
+          role === "expert"
+            ? "I replaced three months of outbound with one form. Briefs match what I&rsquo;d have picked out of a pile anyway."
+            : "Three shortlists, a working-session with the finalist, and a signed SOW by Friday.",
+        author: role === "expert" ? "Marcus Thompson" : "Priya Raman",
+        role:
+          role === "expert"
+            ? "Operations consultant · On roster since 2024"
+            : "COO, Northwind Labs",
+      }}
+    >
+      <div>
+        <div className="flex items-center justify-between">
+          <Tag tone="outline" size="sm">Create account</Tag>
+          <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
+            Takes ~2 min
           </p>
         </div>
+
+        <h2 className="mt-6 font-display text-[clamp(1.75rem,3vw,2.25rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink">
+          Tell us which desk you&rsquo;re on.
+        </h2>
+        <p className="mt-2 text-[14px] text-ink-60">
+          Already a member?{" "}
+          <Link to="/signin" className="link-sweep font-semibold text-ink">
+            Sign in
+          </Link>
+          .
+        </p>
+
+        <div
+          role="radiogroup"
+          aria-label="Account type"
+          className="mt-6 grid grid-cols-2 gap-3"
+        >
+          <RoleCard
+            active={role === "client"}
+            onClick={() => setRole("client")}
+            icon={<Briefcase className="h-5 w-5" strokeWidth={1.75} />}
+            title="Hiring"
+            sub="Brief a contractor"
+          />
+          <RoleCard
+            active={role === "expert"}
+            onClick={() => setRole("expert")}
+            icon={<UserCheck className="h-5 w-5" strokeWidth={1.75} />}
+            title="On the roster"
+            sub="Apply to the network"
+          />
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="mt-6 rounded border border-rust/30 bg-rust/5 px-4 py-3 text-[13px] text-rust"
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <div>
+            <FieldLabel htmlFor="name">Full name</FieldLabel>
+            <FieldInput
+              id="name"
+              required
+              autoComplete="name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setError(null);
+              }}
+              placeholder="Jane Smith"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="email">Work email</FieldLabel>
+            <FieldInput
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError(null);
+              }}
+              placeholder="you@company.com"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="password">Password</FieldLabel>
+            <FieldInput
+              id="password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError(null);
+              }}
+              placeholder="At least 8 characters"
+            />
+          </div>
+
+          <Button
+            tone="ink"
+            size="lg"
+            type="submit"
+            disabled={isLoading}
+            className="w-full"
+            iconLeft={
+              isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null
+            }
+            arrow={!isLoading}
+          >
+            {isLoading
+              ? "Creating account…"
+              : role === "expert"
+                ? "Start application"
+                : "Create account"}
+          </Button>
+        </form>
+
+        {AUTH_CONFIG.googleEnabled ? (
+          <>
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-ink-12" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-40">
+                Or
+              </span>
+              <div className="h-px flex-1 bg-ink-12" />
+            </div>
+            <Button
+              tone="cream"
+              size="lg"
+              type="button"
+              className="w-full"
+              onClick={() => {
+                void signInWithGoogle();
+              }}
+            >
+              Continue with Google
+            </Button>
+          </>
+        ) : null}
       </div>
-    </div>
+    </AuthShell>
+  );
+}
+
+function RoleCard({
+  active,
+  onClick,
+  icon,
+  title,
+  sub,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        "relative flex flex-col items-start gap-3 rounded border p-4 text-left transition-all",
+        active
+          ? "border-ink bg-ink text-cream"
+          : "border-ink-12 bg-white text-ink hover:border-ink",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-9 w-9 items-center justify-center rounded",
+          active ? "bg-sun text-ink" : "bg-cream-2 text-ink",
+        )}
+      >
+        {icon}
+      </span>
+      <div>
+        <p className="font-display text-[14px] font-semibold">{title}</p>
+        <p
+          className={cn(
+            "mt-0.5 text-[12px]",
+            active ? "text-cream/70" : "text-ink-60",
+          )}
+        >
+          {sub}
+        </p>
+      </div>
+    </button>
   );
 }

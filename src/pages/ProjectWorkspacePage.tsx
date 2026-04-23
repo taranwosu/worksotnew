@@ -45,7 +45,7 @@ export function ProjectWorkspacePage() {
   if (isPending) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -68,7 +68,7 @@ export function ProjectWorkspacePage() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <Link
         to="/dashboard"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-60 hover:text-ink"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to dashboard
@@ -76,17 +76,17 @@ export function ProjectWorkspacePage() {
 
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
             Project workspace
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-ink-60">
             Track deliverables and milestone payments for this engagement.
           </p>
         </div>
         <Link
           to="/messages"
           search={{ id: undefined, proposal: proposalId }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3.5 py-2 text-sm font-semibold text-ink hover:bg-paper"
         >
           <MessageSquare className="h-4 w-4" />
           Open thread
@@ -108,17 +108,17 @@ export function ProjectWorkspacePage() {
         </div>
       )}
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mt-6 rounded-lg border border-ink-12 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sun/15 text-ink">
               <FileSignature className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">
+              <h3 className="text-sm font-semibold text-ink">
                 Statement of Work
               </h3>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-ink-60">
                 {contractRef
                   ? contractRef.status === "signed"
                     ? "Contract executed by both parties."
@@ -138,7 +138,7 @@ export function ProjectWorkspacePage() {
               <Link
                 to="/contracts/$contractId"
                 params={{ contractId: contractRef._id }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-ink-2"
               >
                 Open contract
               </Link>
@@ -161,7 +161,7 @@ export function ProjectWorkspacePage() {
                     setCreatingContract(false);
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-ink-2 disabled:opacity-50"
               >
                 {creatingContract && <Loader2 className="h-4 w-4 animate-spin" />}
                 Generate contract
@@ -170,7 +170,7 @@ export function ProjectWorkspacePage() {
           </div>
         </div>
         {contractError && (
-          <p className="mt-2 text-xs text-rose-600">{contractError}</p>
+          <p className="mt-2 text-xs text-rust">{contractError}</p>
         )}
       </div>
 
@@ -184,16 +184,16 @@ export function ProjectWorkspacePage() {
         {!milestones ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+              <div key={i} className="h-24 animate-pulse rounded-lg bg-cream-2" />
             ))}
           </div>
         ) : milestones.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center">
-            <CircleDollarSign className="mx-auto h-6 w-6 text-slate-400" />
-            <h3 className="mt-3 text-sm font-semibold text-slate-900">
+          <div className="rounded-lg border border-dashed border-ink-20 bg-paper/50 p-8 text-center">
+            <CircleDollarSign className="mx-auto h-6 w-6 text-ink-40" />
+            <h3 className="mt-3 text-sm font-semibold text-ink">
               No milestones yet
             </h3>
-            <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
+            <p className="mx-auto mt-1 max-w-sm text-xs text-ink-60">
               {role === "client"
                 ? "Break the project into milestones with clear deliverables and amounts. Experts submit work and you approve & pay per milestone."
                 : "The client hasn't added milestones yet. Once they do, you'll be able to submit deliverables here."}
@@ -207,7 +207,7 @@ export function ProjectWorkspacePage() {
       </div>
 
       {milestones && milestones.length > 0 && (
-        <p className="mt-8 text-center text-xs text-slate-400">
+        <p className="mt-8 text-center text-xs text-ink-40">
           Marking a milestone as paid is a manual confirmation for now. In-platform
           payments via Stripe Connect are coming next.
         </p>
@@ -227,16 +227,16 @@ function StatTile({
 }) {
   return (
     <div
-      className={`rounded-2xl border p-4 shadow-sm ${
+      className={`rounded-lg border p-4 shadow-sm ${
         accent === "emerald"
-          ? "border-emerald-200 bg-emerald-50"
-          : "border-slate-200 bg-white"
+          ? "border-moss/40 bg-moss/10"
+          : "border-ink-12 bg-white"
       }`}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-60">
         {label}
       </p>
-      <p className={`mt-1 text-xl font-bold ${accent === "emerald" ? "text-emerald-900" : "text-slate-900"}`}>
+      <p className={`mt-1 text-xl font-bold ${accent === "emerald" ? "text-moss" : "text-ink"}`}>
         {value}
       </p>
     </div>
@@ -302,7 +302,7 @@ function CreateMilestoneForm({
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-ink-2"
       >
         <Plus className="h-4 w-4" />
         Add milestone
@@ -311,16 +311,16 @@ function CreateMilestoneForm({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-ink-12 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">New milestone</h3>
+        <h3 className="text-sm font-semibold text-ink">New milestone</h3>
         <button
           type="button"
           onClick={() => {
             setExpanded(false);
             reset();
           }}
-          className="rounded p-1 text-slate-400 hover:bg-slate-100"
+          className="rounded p-1 text-ink-40 hover:bg-cream-2"
         >
           <X className="h-4 w-4" />
         </button>
@@ -332,22 +332,22 @@ function CreateMilestoneForm({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Milestone title (e.g. 'Design mockups')"
           maxLength={120}
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
         />
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Deliverables & acceptance criteria (optional)"
           rows={3}
-          className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          className="w-full resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-60">
               Amount ({currency})
             </label>
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-40">
                 $
               </span>
               <input
@@ -356,23 +356,23 @@ function CreateMilestoneForm({
                 step="any"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-7 pr-3 text-sm"
+                className="w-full rounded-lg border border-ink-12 bg-white py-2 pl-7 pr-3 text-sm"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-60">
               Due date (optional)
             </label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
             />
           </div>
         </div>
-        {error && <p className="text-xs text-rose-600">{error}</p>}
+        {error && <p className="text-xs text-rust">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -381,7 +381,7 @@ function CreateMilestoneForm({
               reset();
             }}
             disabled={saving}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-ink-20 bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-paper"
           >
             Cancel
           </button>
@@ -389,7 +389,7 @@ function CreateMilestoneForm({
             type="button"
             onClick={onCreate}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             Add milestone
@@ -433,9 +433,9 @@ function MilestoneCard({
   const statusMeta = statusLabels[status] ?? statusLabels.pending;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-ink-12 bg-white p-5 shadow-sm">
       <div className="flex items-start gap-4">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-cream-2 text-xs font-semibold text-ink">
           {index + 1}
         </div>
         <div className="min-w-0 flex-1">
@@ -446,11 +446,11 @@ function MilestoneCard({
               <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dot}`} />
               {statusMeta.label}
             </span>
-            <span className="text-xs font-semibold text-slate-700">
+            <span className="text-xs font-semibold text-ink">
               {formatCurrency(milestone.amount, milestone.currency)}
             </span>
             {milestone.dueDate && (
-              <span className="flex items-center gap-1 text-xs text-slate-500">
+              <span className="flex items-center gap-1 text-xs text-ink-60">
                 <Calendar className="h-3 w-3" />
                 {new Date(milestone.dueDate).toLocaleDateString("en-US", {
                   month: "short",
@@ -460,16 +460,16 @@ function MilestoneCard({
               </span>
             )}
           </div>
-          <h3 className="mt-2 font-semibold text-slate-900">{milestone.title}</h3>
+          <h3 className="mt-2 font-semibold text-ink">{milestone.title}</h3>
           {milestone.description && (
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-ink-60">
               {milestone.description}
             </p>
           )}
           {(milestone.deliverableNote ||
             (milestone.attachments && milestone.attachments.length > 0)) && (
-            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-              <p className="font-semibold text-slate-700">Expert submission</p>
+            <div className="mt-2 rounded-lg border border-ink-12 bg-paper p-3 text-xs text-ink-60">
+              <p className="font-semibold text-ink">Expert submission</p>
               {milestone.deliverableNote && (
                 <p className="mt-1 whitespace-pre-wrap">
                   {milestone.deliverableNote}
@@ -479,8 +479,8 @@ function MilestoneCard({
                 <ul className="mt-2 space-y-1">
                   {milestone.attachments.map((att: any) => (
                     <li key={att.storageId} className="flex items-center gap-2">
-                      <FileText className="h-3.5 w-3.5 text-slate-400" />
-                      <span className="min-w-0 flex-1 truncate text-slate-700">
+                      <FileText className="h-3.5 w-3.5 text-ink-40" />
+                      <span className="min-w-0 flex-1 truncate text-ink">
                         {att.fileName}
                         {att.size ? ` · ${formatFileSize(att.size)}` : ""}
                       </span>
@@ -489,7 +489,7 @@ function MilestoneCard({
                           href={att.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-md border border-ink-12 bg-white px-2 py-0.5 text-[10px] font-semibold text-ink hover:bg-paper"
                         >
                           <Download className="h-3 w-3" />
                           Download
@@ -508,7 +508,7 @@ function MilestoneCard({
                 type="button"
                 onClick={() => setShowSubmit(true)}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:bg-ink-2"
               >
                 <Upload className="h-3.5 w-3.5" />
                 Submit for review
@@ -521,7 +521,7 @@ function MilestoneCard({
                   runAction(() => approve({ milestoneId: milestone._id }))
                 }
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-moss px-3 py-1.5 text-xs font-semibold text-white hover:bg-moss"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Approve
@@ -534,7 +534,7 @@ function MilestoneCard({
                   runAction(() => pay({ milestoneId: milestone._id }))
                 }
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:bg-ink-2"
               >
                 <CreditCard className="h-3.5 w-3.5" />
                 Mark paid
@@ -548,7 +548,7 @@ function MilestoneCard({
                     runAction(() => cancel({ milestoneId: milestone._id }))
                   }
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
                 >
                   Cancel
                 </button>
@@ -556,8 +556,8 @@ function MilestoneCard({
           </div>
 
           {showSubmit && (
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <div className="mt-3 rounded-lg border border-ink-12 bg-paper p-3">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-60">
                 Submission note
               </label>
               <textarea
@@ -565,9 +565,9 @@ function MilestoneCard({
                 onChange={(e) => setDeliverableNote(e.target.value)}
                 placeholder="Summarise what you delivered"
                 rows={3}
-                className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="w-full resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
               />
-              <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wider text-ink-60">
                 Attachments
               </label>
               <FileUpload
@@ -583,9 +583,9 @@ function MilestoneCard({
                   {pendingAttachments.map((att, i) => (
                     <li
                       key={att.storageId}
-                      className="flex items-center gap-2 rounded-md bg-white px-2 py-1 text-xs text-slate-700"
+                      className="flex items-center gap-2 rounded-md bg-white px-2 py-1 text-xs text-ink"
                     >
-                      <Paperclip className="h-3 w-3 text-slate-400" />
+                      <Paperclip className="h-3 w-3 text-ink-40" />
                       <span className="min-w-0 flex-1 truncate">
                         {att.fileName}
                         {att.size ? ` · ${formatFileSize(att.size)}` : ""}
@@ -597,7 +597,7 @@ function MilestoneCard({
                             list.filter((_, j) => j !== i)
                           )
                         }
-                        className="text-slate-400 hover:text-rose-600"
+                        className="text-ink-40 hover:text-rust"
                         aria-label="Remove"
                       >
                         <X className="h-3 w-3" />
@@ -615,7 +615,7 @@ function MilestoneCard({
                     setPendingAttachments([]);
                   }}
                   disabled={busy}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+                  className="rounded-lg border border-ink-20 bg-white px-3 py-1 text-xs font-semibold text-ink"
                 >
                   Cancel
                 </button>
@@ -642,7 +642,7 @@ function MilestoneCard({
                     setPendingAttachments([]);
                   }}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1 text-xs font-semibold text-white"
                 >
                   {busy && <Loader2 className="h-3 w-3 animate-spin" />}
                   Submit
@@ -651,7 +651,7 @@ function MilestoneCard({
             </div>
           )}
 
-          {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+          {error && <p className="mt-2 text-xs text-rust">{error}</p>}
         </div>
       </div>
     </div>
@@ -664,28 +664,28 @@ const statusLabels: Record<
 > = {
   pending: {
     label: "Pending",
-    badge: "bg-slate-100 text-slate-700",
-    dot: "bg-slate-400",
+    badge: "bg-cream-2 text-ink",
+    dot: "bg-ink-40",
   },
   submitted: {
     label: "Awaiting review",
-    badge: "bg-amber-50 text-amber-700",
-    dot: "bg-amber-500",
+    badge: "bg-sun/15 text-ink",
+    dot: "bg-sun",
   },
   approved: {
     label: "Approved",
-    badge: "bg-blue-50 text-blue-700",
-    dot: "bg-blue-500",
+    badge: "bg-sun/15 text-ink",
+    dot: "bg-ink",
   },
   paid: {
     label: "Paid",
-    badge: "bg-emerald-50 text-emerald-700",
-    dot: "bg-emerald-500",
+    badge: "bg-moss/10 text-moss",
+    dot: "bg-moss",
   },
   cancelled: {
     label: "Cancelled",
-    badge: "bg-rose-50 text-rose-700",
-    dot: "bg-rose-500",
+    badge: "bg-rust/10 text-rust",
+    dot: "bg-rust",
   },
 };
 
