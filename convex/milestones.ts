@@ -89,6 +89,16 @@ export const submitMilestone = mutation({
   args: {
     milestoneId: v.id("milestones"),
     deliverableNote: v.optional(v.string()),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          fileName: v.string(),
+          contentType: v.optional(v.string()),
+          size: v.optional(v.number()),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const user = (await authComponent.getAuthUser(ctx)) as BetterAuthUser | null;
@@ -107,6 +117,10 @@ export const submitMilestone = mutation({
       status: "submitted",
       submittedAt: Date.now(),
       deliverableNote: args.deliverableNote?.trim() || undefined,
+      deliverableAttachments:
+        args.attachments && args.attachments.length > 0
+          ? args.attachments
+          : undefined,
     });
   },
 });
@@ -197,13 +211,32 @@ export const listMilestones = query({
       .withIndex("by_proposal", (q) => q.eq("proposalId", args.proposalId))
       .collect();
 
-    return milestones
-      .slice()
-      .sort((a, b) => a.orderIndex - b.orderIndex)
-      .map((m) => ({
-        ...m,
-        role: request.userId === user._id ? ("client" as const) : ("expert" as const),
-      }));
+    const role =
+      request.userId === user._id ? ("client" as const) : ("expert" as const);
+
+    return await Promise.all(
+      milestones
+        .slice()
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map(async (m) => {
+          const attachments = m.deliverableAttachments
+            ? await Promise.all(
+                m.deliverableAttachments.map(async (a) => ({
+                  storageId: a.storageId,
+                  fileName: a.fileName,
+                  contentType: a.contentType ?? null,
+                  size: a.size ?? null,
+                  url: await ctx.storage.getUrl(a.storageId),
+                }))
+              )
+            : [];
+          return {
+            ...m,
+            role,
+            attachments,
+          };
+        })
+    );
   },
 });
 

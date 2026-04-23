@@ -163,8 +163,60 @@ export default defineSchema({
     approvedAt: v.optional(v.number()),
     paidAt: v.optional(v.number()),
     deliverableNote: v.optional(v.string()),
+    deliverableAttachments: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          fileName: v.string(),
+          contentType: v.optional(v.string()),
+          size: v.optional(v.number()),
+        })
+      )
+    ),
   })
     .index("by_proposal", ["proposalId", "orderIndex"])
     .index("by_client", ["clientUserId"])
     .index("by_expert", ["expertUserId"]),
+
+  // Contracts / SOW auto-generated from accepted proposals.
+  // A contract is legally executed once both parties sign.
+  contracts: defineTable({
+    proposalId: v.id("proposals"),
+    requestId: v.id("clientRequests"),
+    clientUserId: v.string(),
+    expertUserId: v.string(),
+    title: v.string(),
+    scope: v.string(),
+    deliverables: v.string(),
+    amount: v.number(),
+    currency: v.string(),
+    rateType: v.string(),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    terms: v.string(),
+    status: v.string(), // "draft" | "sent" | "signed" | "cancelled"
+    clientSignature: v.optional(
+      v.object({
+        name: v.string(),
+        signedAt: v.number(),
+        ipAddress: v.optional(v.string()),
+        userAgent: v.optional(v.string()),
+      })
+    ),
+    expertSignature: v.optional(
+      v.object({
+        name: v.string(),
+        signedAt: v.number(),
+        ipAddress: v.optional(v.string()),
+        userAgent: v.optional(v.string()),
+      })
+    ),
+    sentAt: v.optional(v.number()),
+    executedAt: v.optional(v.number()),
+    version: v.number(),
+  })
+    .index("by_proposal", ["proposalId"])
+    .index("by_client", ["clientUserId"])
+    .index("by_expert", ["expertUserId"])
+    .index("by_status", ["status"]),
 });
