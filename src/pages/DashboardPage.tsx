@@ -21,9 +21,13 @@ import {
   Search,
   BarChart3,
   Clock,
+  FolderKanban,
+  CircleDollarSign,
 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
+import { PortfolioSection } from "@/components/PortfolioSection";
+import { LeaveReviewList, ReceivedReviewsList } from "@/components/ReviewsSection";
 
 export function DashboardPage() {
   const { data: session, isPending } = useSession();
@@ -31,6 +35,7 @@ export function DashboardPage() {
   const expertProfiles = useQuery(api.queries.listExpertProfiles, session ? {} : "skip");
   const clientRequests = useQuery(api.queries.listClientRequests, session ? {} : "skip");
   const proposals = useQuery(api.queries.listProposals, session ? {} : "skip");
+  const engagements = useQuery(api.milestones.listMyEngagements, session ? {} : "skip");
 
   if (isPending) {
     return (
@@ -301,8 +306,28 @@ export function DashboardPage() {
           </div>
         )}
 
+        {/* Active engagements — accepted proposals for both roles */}
+        {engagements && engagements.length > 0 && (
+          <Section
+            title="Active engagements"
+            subtitle="Accepted proposals with milestone tracking"
+            count={engagements.length}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              {engagements.map((e) => (
+                <EngagementCard key={e.proposalId} engagement={e} />
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Pending reviews call-to-action */}
+        <div className="mt-10">
+          <LeaveReviewList />
+        </div>
+
         {/* Two-column layout for content */}
-        <div className="grid gap-8 lg:grid-cols-5">
+        <div className="mt-10 grid gap-8 lg:grid-cols-5">
           {/* Main column */}
           <div className="space-y-8 lg:col-span-3">
             <Section
@@ -360,6 +385,23 @@ export function DashboardPage() {
               )}
             </Section>
 
+            {/* Portfolio — experts only */}
+            {hasExpertProfile && expertProfile && (
+              <PortfolioSection expertProfileId={expertProfile._id} />
+            )}
+
+            {/* Reviews received */}
+            {session.user && (
+              <Section
+                title="Reviews received"
+                subtitle="What your counterparts have said"
+                count={0}
+                hideCount
+              >
+                <ReceivedReviewsList subjectUserId={session.user.id} />
+              </Section>
+            )}
+
             {/* Insights section */}
             {!isLoadingData && (
               <Section
@@ -400,12 +442,13 @@ export function DashboardPage() {
                 {hasExpertProfile ? (
                   <>
                     <QuickAction to="/experts" icon={Target} label="Find new projects" />
+                    <QuickAction to="/messages" icon={MessageSquare} label="Open messages" />
                     <QuickAction to="/onboarding/expert" icon={UserCheck} label="Edit my profile" />
-                    <QuickAction to="/pricing" icon={TrendingUp} label="Upgrade to Pro" />
                   </>
                 ) : (
                   <>
                     <QuickAction to="/post-request" icon={Plus} label="Post a new project" />
+                    <QuickAction to="/messages" icon={MessageSquare} label="Open messages" />
                     <QuickAction to="/experts" icon={Briefcase} label="Browse all experts" />
                     <QuickAction to="/onboarding/expert" icon={UserCheck} label="Become an expert" />
                   </>
@@ -690,6 +733,73 @@ function ProjectCard({ request }: { request: any }) {
   );
 }
 
+function EngagementCard({ engagement }: { engagement: any }) {
+  const pct =
+    engagement.totalAmount > 0
+      ? Math.round((engagement.paidAmount / engagement.totalAmount) * 100)
+      : 0;
+  return (
+    <Link
+      to="/workspace/$proposalId"
+      params={{ proposalId: engagement.proposalId }}
+      className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-md"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+          <FolderKanban className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+              {engagement.role}
+            </span>
+            <span className="text-xs text-slate-500">
+              {engagement.milestoneCount} milestone{engagement.milestoneCount === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="mt-1.5 truncate font-semibold text-slate-900">
+            {engagement.requestTitle}
+          </p>
+          {engagement.totalAmount > 0 && (
+            <>
+              <div className="mt-3 flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1 text-slate-600">
+                  <CircleDollarSign className="h-3 w-3" />
+                  {formatMoney(engagement.paidAmount, engagement.currency)} of{" "}
+                  {formatMoney(engagement.totalAmount, engagement.currency)}
+                </span>
+                <span className="font-semibold text-slate-900">{pct}%</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-slate-700 group-hover:text-slate-900">
+        Open workspace
+        <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+      </span>
+    </Link>
+  );
+}
+
+function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString()}`;
+  }
+}
+
 function ProposalCard({ proposal }: { proposal: any }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-md">
@@ -719,6 +829,16 @@ function ProposalCard({ proposal }: { proposal: any }) {
             <span>{proposal.estimatedDurationWeeks} weeks</span>
             <span>•</span>
             <span>{proposal.availability}</span>
+          </div>
+          <div className="mt-3">
+            <Link
+              to="/messages"
+              search={{ proposal: proposal._id }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Message client
+            </Link>
           </div>
         </div>
       </div>

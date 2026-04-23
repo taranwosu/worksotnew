@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, ArrowRight, Check, Loader2, Compass, Plus, X, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Compass, Plus, X, Save, Sparkles, Trash2 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
+import { FileUpload, type UploadedFileMeta } from "@/components/FileUpload";
 
 const CATEGORIES = [
   { id: "accounting", label: "Accounting & Finance", icon: "💼" },
@@ -41,6 +43,7 @@ export function ExpertOnboardingPage() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
   const createProfile = useMutation(api.mutations.createExpertProfile);
+  const deleteStorageFile = useMutation(api.files.deleteStorageFile);
   const existing = useQuery(api.queries.listExpertProfiles, session ? {} : "skip");
 
   const [step, setStep] = useState(1);
@@ -48,6 +51,12 @@ export function ExpertOnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
   const hasLoadedDraft = useRef(false);
+  const [avatarStorageId, setAvatarStorageId] = useState<Id<"_storage"> | null>(null);
+  const avatarUrlQuery = useQuery(
+    api.files.getFileUrl,
+    avatarStorageId ? { storageId: avatarStorageId } : "skip"
+  );
+  const avatarPreviewUrl = avatarUrlQuery ?? null;
 
   // Form state
   const [fullName, setFullName] = useState("");
@@ -192,7 +201,8 @@ export function ExpertOnboardingPage() {
         yearsExperience,
         availability,
         remoteOnly,
-        avatarUrl: session.user?.image ?? undefined,
+        avatarUrl: avatarStorageId ? undefined : session.user?.image ?? undefined,
+        avatarStorageId: avatarStorageId ?? undefined,
         linkedinUrl: linkedinUrl || undefined,
         websiteUrl: websiteUrl || undefined,
         certifications,
@@ -286,6 +296,60 @@ export function ExpertOnboardingPage() {
                 <h2 className="text-lg font-semibold text-slate-900">Tell us about you</h2>
                 <p className="mt-1 text-sm text-slate-600">Start with the basics — your name, headline and a short bio.</p>
               </div>
+              <FormField label="Profile photo" hint="PNG or JPG, up to 5 MB. Profiles with photos get 3× more invites.">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-gradient-to-br from-slate-200 to-slate-300">
+                    {avatarPreviewUrl ? (
+                      <img
+                        src={avatarPreviewUrl}
+                        alt="Avatar preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : session.user?.image ? (
+                      <img
+                        src={session.user.image}
+                        alt="Current photo"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xl font-bold text-slate-500">
+                        {(fullName || session.user?.email || "?").charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <FileUpload
+                      compact
+                      accept="image/png,image/jpeg,image/webp"
+                      maxSizeMB={5}
+                      label={avatarStorageId ? "Replace photo" : "Upload photo"}
+                      onUploaded={async (meta: UploadedFileMeta) => {
+                        if (avatarStorageId) {
+                          try {
+                            await deleteStorageFile({ storageId: avatarStorageId });
+                          } catch {}
+                        }
+                        setAvatarStorageId(meta.storageId);
+                      }}
+                    />
+                    {avatarStorageId && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await deleteStorageFile({ storageId: avatarStorageId });
+                          } catch {}
+                          setAvatarStorageId(null);
+                        }}
+                        className="ml-2 inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </FormField>
               <FormField label="Full name">
                 <input
                   type="text"
