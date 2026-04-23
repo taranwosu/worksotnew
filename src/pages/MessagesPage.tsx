@@ -81,7 +81,7 @@ export function MessagesPage() {
   if (isPending) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -94,30 +94,30 @@ export function MessagesPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
           Messages
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-ink-60">
           Talk directly with clients and experts about active projects.
         </p>
       </div>
 
-      <div className="grid h-[calc(100vh-14rem)] min-h-[520px] grid-cols-1 gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[340px_1fr]">
+      <div className="grid h-[calc(100vh-14rem)] min-h-[520px] grid-cols-1 gap-4 overflow-hidden rounded-lg border border-ink-12 bg-white shadow-sm lg:grid-cols-[340px_1fr]">
         {/* Conversation list */}
         <aside
-          className={`flex flex-col border-slate-200 lg:border-r ${
+          className={`flex flex-col border-ink-12 lg:border-r ${
             selectedId ? "hidden lg:flex" : "flex"
           }`}
         >
-          <div className="border-b border-slate-200 p-3">
+          <div className="border-b border-ink-12 p-3">
             <div className="relative">
-              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-40" />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search conversations"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+                className="w-full rounded-lg border border-ink-12 bg-paper py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-40 focus:border-ink-20 focus:bg-white focus:outline-none focus:shadow-[0_0_0_3px_var(--color-sun-soft)]"
               />
             </div>
           </div>
@@ -127,14 +127,14 @@ export function MessagesPage() {
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="h-16 animate-pulse rounded-lg bg-slate-100"
+                    className="h-16 animate-pulse rounded-lg bg-cream-2"
                   />
                 ))}
               </div>
             ) : filtered.length === 0 ? (
               <EmptyList hasConversations={conversations.length > 0} />
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-ink-10">
                 {filtered.map((c) => (
                   <li key={c._id}>
                     <button
@@ -146,8 +146,8 @@ export function MessagesPage() {
                           replace: true,
                         });
                       }}
-                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
-                        selectedId === c._id ? "bg-slate-50" : ""
+                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-paper ${
+                        selectedId === c._id ? "bg-paper" : ""
                       }`}
                     >
                       <Avatar
@@ -156,25 +156,25 @@ export function MessagesPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-semibold text-slate-900">
+                          <p className="truncate text-sm font-semibold text-ink">
                             {c.otherUser.name}
                           </p>
-                          <span className="flex-shrink-0 text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                          <span className="flex-shrink-0 text-[10px] font-medium uppercase tracking-wider text-ink-40">
                             {formatShortTime(c.lastMessageAt)}
                           </span>
                         </div>
                         <p
                           className={`mt-0.5 truncate text-xs ${
                             c.hasUnread
-                              ? "font-semibold text-slate-900"
-                              : "text-slate-500"
+                              ? "font-semibold text-ink"
+                              : "text-ink-60"
                           }`}
                         >
                           {c.lastMessagePreview || "No messages yet"}
                         </p>
                       </div>
                       {c.hasUnread && (
-                        <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-600" />
+                        <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-ink" />
                       )}
                     </button>
                   </li>
@@ -194,13 +194,13 @@ export function MessagesPage() {
           ) : (
             <div className="flex flex-1 items-center justify-center p-8 text-center">
               <div>
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                  <MessageSquare className="h-5 w-5 text-slate-400" />
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-cream-2">
+                  <MessageSquare className="h-5 w-5 text-ink-40" />
                 </div>
-                <h3 className="mt-4 text-sm font-semibold text-slate-900">
+                <h3 className="mt-4 text-sm font-semibold text-ink">
                   Select a conversation
                 </h3>
-                <p className="mx-auto mt-1 max-w-sm text-sm text-slate-600">
+                <p className="mx-auto mt-1 max-w-sm text-sm text-ink-60">
                   Pick a thread from the list to start chatting.
                 </p>
               </div>
@@ -263,7 +263,7 @@ function ConversationThread({
 
   if (conversation === null) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-slate-500">
+      <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-ink-60">
         Conversation not found or you are not a participant.
       </div>
     );
@@ -272,17 +272,17 @@ function ConversationThread({
   if (!conversation) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+        <Loader2 className="h-5 w-5 animate-spin text-ink-40" />
       </div>
     );
   }
 
   return (
     <>
-      <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+      <header className="flex items-center gap-3 border-b border-ink-12 px-4 py-3">
         <button
           onClick={onBack}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
+          className="rounded-md p-1.5 text-ink-60 hover:bg-cream-2 lg:hidden"
           aria-label="Back"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -292,17 +292,17 @@ function ConversationThread({
           image={conversation.otherUser.image}
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">
+          <p className="truncate text-sm font-semibold text-ink">
             {conversation.otherUser.name}
           </p>
           {conversation.otherUser.email && (
-            <p className="truncate text-xs text-slate-500">
+            <p className="truncate text-xs text-ink-60">
               {conversation.otherUser.email}
             </p>
           )}
         </div>
         {conversation.relatedRequestId && (
-          <span className="hidden rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-700 sm:inline-flex">
+          <span className="hidden rounded-full bg-sun/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink sm:inline-flex">
             Project thread
           </span>
         )}
@@ -317,7 +317,7 @@ function ConversationThread({
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className={`h-10 w-3/5 animate-pulse rounded-lg bg-slate-100 ${
+                className={`h-10 w-3/5 animate-pulse rounded-lg bg-cream-2 ${
                   i % 2 ? "ml-auto" : ""
                 }`}
               />
@@ -326,8 +326,8 @@ function ConversationThread({
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <MessageSquare className="mx-auto h-5 w-5 text-slate-300" />
-              <p className="mt-2 text-sm text-slate-500">
+              <MessageSquare className="mx-auto h-5 w-5 text-cream/70" />
+              <p className="mt-2 text-sm text-ink-60">
                 Say hello to {conversation.otherUser.name.split(" ")[0]}.
               </p>
             </div>
@@ -340,7 +340,7 @@ function ConversationThread({
             return (
               <div key={m._id}>
                 {showTime && (
-                  <p className="my-3 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                  <p className="my-3 text-center text-[10px] font-medium uppercase tracking-wider text-ink-40">
                     {formatFullTime(m.createdAt)}
                   </p>
                 )}
@@ -348,10 +348,10 @@ function ConversationThread({
                   className={`flex ${m.isMine ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                    className={`max-w-[80%] rounded-lg px-3.5 py-2 text-sm shadow-sm ${
                       m.isMine
-                        ? "bg-slate-900 text-white"
-                        : "border border-slate-200 bg-white text-slate-900"
+                        ? "bg-ink text-white"
+                        : "border border-ink-12 bg-white text-ink"
                     }`}
                   >
                     <p className="whitespace-pre-wrap break-words">{m.content}</p>
@@ -365,7 +365,7 @@ function ConversationThread({
 
       <form
         onSubmit={onSend}
-        className="flex items-end gap-2 border-t border-slate-200 p-3"
+        className="flex items-end gap-2 border-t border-ink-12 p-3"
       >
         <textarea
           value={draft}
@@ -378,12 +378,12 @@ function ConversationThread({
           }}
           placeholder="Write a message…"
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/5"
+          className="flex-1 resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-40 focus:border-ink-20 focus:outline-none focus:shadow-[0_0_0_3px_var(--color-sun-soft)]"
         />
         <button
           type="submit"
           disabled={!draft.trim() || sending}
-          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-ink px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-2 disabled:cursor-not-allowed disabled:bg-ink-20"
         >
           {sending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -400,13 +400,13 @@ function ConversationThread({
 function EmptyList({ hasConversations }: { hasConversations: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-        <Inbox className="h-4 w-4 text-slate-400" />
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cream-2">
+        <Inbox className="h-4 w-4 text-ink-40" />
       </div>
-      <h3 className="mt-3 text-sm font-semibold text-slate-900">
+      <h3 className="mt-3 text-sm font-semibold text-ink">
         {hasConversations ? "No matches" : "No conversations yet"}
       </h3>
-      <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">
+      <p className="mx-auto mt-1 max-w-xs text-xs text-ink-60">
         {hasConversations
           ? "Try a different search term."
           : "Message a client or expert from a project or proposal to start a thread."}
@@ -414,7 +414,7 @@ function EmptyList({ hasConversations }: { hasConversations: boolean }) {
       {!hasConversations && (
         <Link
           to="/dashboard"
-          className="mt-3 text-xs font-semibold text-slate-900 hover:text-slate-700"
+          className="mt-3 text-xs font-semibold text-ink hover:text-ink"
         >
           Go to dashboard →
         </Link>
@@ -435,7 +435,7 @@ function Avatar({ name, image }: { name: string; image: string | null }) {
   }
   const initial = name.charAt(0).toUpperCase();
   return (
-    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-sm font-semibold text-white">
+    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-ink text-sm font-semibold text-white">
       {initial}
     </div>
   );

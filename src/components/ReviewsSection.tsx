@@ -9,8 +9,8 @@ export function LeaveReviewList() {
 
   if (!reviewable) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="h-20 animate-pulse rounded-lg bg-slate-100" />
+      <div className="rounded-lg border border-ink-12 bg-white p-6 shadow-sm">
+        <div className="h-20 animate-pulse rounded-lg bg-cream-2" />
       </div>
     );
   }
@@ -18,13 +18,13 @@ export function LeaveReviewList() {
   if (reviewable.length === 0) return null;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-lg border border-ink-12 bg-white p-6 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">
+          <h3 className="text-lg font-semibold text-ink">
             Leave a review
           </h3>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-ink-60">
             Share feedback on recent engagements. Reviews build trust on the platform.
           </p>
         </div>
@@ -86,7 +86,7 @@ function ReviewFormCard({
 
   if (submitted) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+      <div className="flex items-center gap-3 rounded-lg border border-moss/40 bg-moss/10 px-4 py-3 text-sm text-moss">
         <CheckCircle2 className="h-4 w-4" />
         Review submitted. Thanks for the feedback.
       </div>
@@ -94,35 +94,35 @@ function ReviewFormCard({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="rounded-lg border border-ink-12 bg-white">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center justify-between gap-3 p-4 text-left"
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">
+          <p className="truncate text-sm font-semibold text-ink">
             {requestTitle}
           </p>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-ink-60">
             Review the {role === "client" ? "expert" : "client"} you worked with.
           </p>
         </div>
-        <span className="flex-shrink-0 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+        <span className="flex-shrink-0 rounded-full border border-ink-20 bg-white px-3 py-1 text-xs font-semibold text-ink">
           {expanded ? "Cancel" : "Write review"}
         </span>
       </button>
 
       {expanded && (
-        <div className="space-y-3 border-t border-slate-200 p-4">
+        <div className="space-y-3 border-t border-ink-12 p-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-60">
               Rating
             </label>
             <StarInput value={rating} onChange={setRating} />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-60">
               Title
             </label>
             <input
@@ -131,11 +131,11 @@ function ReviewFormCard({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Summarise the engagement"
               maxLength={120}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-60">
               Review
             </label>
             <textarea
@@ -144,19 +144,19 @@ function ReviewFormCard({
               placeholder="What stood out? Would you work together again?"
               rows={4}
               maxLength={2000}
-              className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              className="w-full resize-none rounded-lg border border-ink-12 bg-white px-3 py-2 text-sm"
             />
-            <p className="mt-1 text-[11px] text-slate-400">
+            <p className="mt-1 text-[11px] text-ink-40">
               {body.length}/2000
             </p>
           </div>
-          {error && <p className="text-xs text-rose-600">{error}</p>}
+          {error && <p className="text-xs text-rust">{error}</p>}
           <div className="flex justify-end">
             <button
               type="button"
               onClick={onSubmit}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-2 disabled:opacity-50"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Submit review
@@ -188,13 +188,13 @@ function StarInput({
           <Star
             className={`h-6 w-6 ${
               n <= value
-                ? "fill-amber-400 text-amber-400"
-                : "text-slate-300"
+                ? "fill-sun text-sun"
+                : "text-cream/70"
             }`}
           />
         </button>
       ))}
-      <span className="ml-2 text-sm font-semibold text-slate-700">
+      <span className="ml-2 text-sm font-semibold text-ink">
         {value} / 5
       </span>
     </div>
@@ -208,7 +208,7 @@ export function ReceivedReviewsList({ subjectUserId }: { subjectUserId: string }
     return (
       <div className="space-y-2">
         {[0, 1].map((i) => (
-          <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />
+          <div key={i} className="h-20 animate-pulse rounded-lg bg-cream-2" />
         ))}
       </div>
     );
@@ -216,12 +216,12 @@ export function ReceivedReviewsList({ subjectUserId }: { subjectUserId: string }
 
   if (reviews.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-6 text-center">
-        <Star className="mx-auto h-5 w-5 text-slate-400" />
-        <p className="mt-2 text-sm font-semibold text-slate-900">
+      <div className="rounded-lg border border-dashed border-ink-20 bg-paper/50 p-6 text-center">
+        <Star className="mx-auto h-5 w-5 text-ink-40" />
+        <p className="mt-2 text-sm font-semibold text-ink">
           No reviews yet
         </p>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-0.5 text-xs text-ink-60">
           Reviews appear here after your first completed engagement.
         </p>
       </div>
@@ -231,7 +231,7 @@ export function ReceivedReviewsList({ subjectUserId }: { subjectUserId: string }
   return (
     <ul className="space-y-3">
       {reviews.map((r) => (
-        <li key={r._id} className="rounded-xl border border-slate-200 bg-white p-4">
+        <li key={r._id} className="rounded-lg border border-ink-12 bg-white p-4">
           <div className="flex items-start gap-3">
             {r.author.image ? (
               <img
@@ -240,24 +240,24 @@ export function ReceivedReviewsList({ subjectUserId }: { subjectUserId: string }
                 className="h-9 w-9 flex-shrink-0 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-semibold text-white">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
                 {r.author.name.charAt(0).toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-slate-900">
+                <p className="truncate text-sm font-semibold text-ink">
                   {r.author.name}
                 </p>
                 <StarDisplay rating={r.rating} />
               </div>
-              <p className="mt-0.5 text-sm font-semibold text-slate-900">
+              <p className="mt-0.5 text-sm font-semibold text-ink">
                 {r.title}
               </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-60">
                 {r.body}
               </p>
-              <p className="mt-2 text-[11px] text-slate-400">
+              <p className="mt-2 text-[11px] text-ink-40">
                 {new Date(r.createdAt).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
@@ -280,8 +280,8 @@ function StarDisplay({ rating }: { rating: number }) {
           key={n}
           className={`h-3.5 w-3.5 ${
             n <= Math.round(rating)
-              ? "fill-amber-400 text-amber-400"
-              : "text-slate-300"
+              ? "fill-sun text-sun"
+              : "text-cream/70"
           }`}
         />
       ))}

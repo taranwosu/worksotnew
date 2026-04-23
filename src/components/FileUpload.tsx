@@ -86,7 +86,7 @@ export function FileUpload({
           type="button"
           onClick={pickFile}
           disabled={disabled || uploading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50"
         >
           {uploading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -102,7 +102,7 @@ export function FileUpload({
           onChange={(e) => handleFiles(e.target.files)}
           className="hidden"
         />
-        {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+        {error && <p className="mt-1 text-xs text-rust">{error}</p>}
       </>
     );
   }
@@ -123,26 +123,26 @@ export function FileUpload({
           setDragOver(false);
           handleFiles(e.dataTransfer.files);
         }}
-        className={`flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-sm transition-all ${
+        className={`flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-sm transition-all ${
           dragOver
-            ? "border-slate-900 bg-slate-50"
-            : "border-slate-300 bg-white hover:border-slate-400"
+            ? "border-ink bg-paper"
+            : "border-ink-20 bg-white hover:border-ink-20"
         } ${disabled || uploading ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
       >
         {uploading ? (
-          <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
         ) : (
-          <UploadCloud className="h-6 w-6 text-slate-400" />
+          <UploadCloud className="h-6 w-6 text-ink-40" />
         )}
         <div className="text-center">
-          <p className="font-semibold text-slate-700">
+          <p className="font-semibold text-ink">
             {uploading ? "Uploading…" : label}
           </p>
           {hint && !uploading && (
-            <p className="mt-0.5 text-xs text-slate-500">{hint}</p>
+            <p className="mt-0.5 text-xs text-ink-60">{hint}</p>
           )}
           {!uploading && (
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-ink-60">
               Click to browse or drop a file (max {maxSizeMB} MB)
             </p>
           )}
@@ -155,7 +155,7 @@ export function FileUpload({
         onChange={(e) => handleFiles(e.target.files)}
         className="hidden"
       />
-      {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-rust">{error}</p>}
     </div>
   );
 }
