@@ -1,25 +1,9 @@
 import { useState } from "react";
-import { Mail, Building2, PhoneCall, MapPin, Check } from "lucide-react";
-import {
-  Container,
-  Eyebrow,
-  Button,
-  FieldInput,
-  FieldLabel,
-  FieldTextarea,
-  FieldSelect,
-  FieldHint,
-} from "@/components/primitives";
+import { Mail, MessageSquare, Building2 } from "lucide-react";
 
 export function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    company: "",
-    topic: "general",
-    message: "",
-  });
+  const [form, setForm] = useState({ name: "", email: "", company: "", message: "" });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,243 +11,69 @@ export function ContactPage() {
   };
 
   return (
-    <div className="bg-cream">
-      <section className="border-b border-ink-12 pt-16 md:pt-20">
-        <Container>
-          <div className="flex items-center justify-between border-b border-ink-12 pb-6">
-            <Eyebrow index="§ 01" accent>
-              Writing desk
-            </Eyebrow>
-            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
-              Reply in &lt; 1 business day
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-10 pt-10 md:grid-cols-12 md:pt-14">
-            <div className="md:col-span-8">
-              <h1 className="display-xl text-ink">
-                Write us.
-                <br />
-                We <em className="italic">actually</em> read it.
-              </h1>
-            </div>
-            <div className="md:col-span-4 md:pt-4">
-              <p className="prose-lede">
-                No chatbots, no routing mazes. Every message lands with a named
-                person on our operations or bench team within one business day
-                — often inside the hour.
-              </p>
-            </div>
-          </div>
-        </Container>
-      </section>
+    <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+      <div className="grid gap-12 lg:grid-cols-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Contact</p>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">Get in touch</h1>
+          <p className="mt-4 text-lg text-slate-600">Questions about hiring? Enterprise needs? Want to join as an expert? We read every message.</p>
 
-      <section className="py-16 md:py-24">
-        <Container>
-          <div className="grid grid-cols-1 gap-10 md:grid-cols-12 md:gap-12">
-            {/* Left — desks & locations */}
-            <aside className="md:col-span-5">
-              <Eyebrow index="§ 02" accent>
-                The desks
-              </Eyebrow>
-              <h2 className="mt-4 font-display text-[clamp(1.75rem,3vw,2.25rem)] font-medium leading-[1.1] tracking-[-0.02em] text-ink">
-                Four ways in, one person behind each.
-              </h2>
-
-              <ul className="mt-10 divide-y divide-ink-12 border-y border-ink-12">
-                {[
-                  {
-                    icon: Mail,
-                    label: "General",
-                    value: "hello@worksoy.com",
-                    note: "Ops team · Mon–Fri",
-                  },
-                  {
-                    icon: Building2,
-                    label: "Bench / Enterprise",
-                    value: "bench@worksoy.com",
-                    note: "Enterprise lead · Named",
-                  },
-                  {
-                    icon: PhoneCall,
-                    label: "Applying as a contractor",
-                    value: "apply@worksoy.com",
-                    note: "Roster committee",
-                  },
-                  {
-                    icon: MapPin,
-                    label: "Press / partnerships",
-                    value: "press@worksoy.com",
-                    note: "Comms desk",
-                  },
-                ].map((d) => (
-                  <li
-                    key={d.label}
-                    className="flex items-center justify-between gap-4 py-5"
-                  >
-                    <div className="flex items-center gap-4">
-                      <span className="flex h-10 w-10 items-center justify-center rounded bg-cream-2 text-ink">
-                        <d.icon className="h-4 w-4" strokeWidth={1.75} />
-                      </span>
-                      <div>
-                        <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
-                          {d.label}
-                        </p>
-                        <p className="mt-1 font-display text-[15.5px] font-medium text-ink">
-                          {d.value}
-                        </p>
-                        <p className="text-[11.5px] text-ink-40">{d.note}</p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="mt-10 grid grid-cols-2 gap-4">
-                {[
-                  ["New York", "1 Broadway · NY"],
-                  ["London", "22 Hanover Sq · W1"],
-                  ["Remote", "Global · async"],
-                ].map(([place, addr]) => (
-                  <div
-                    key={place}
-                    className="rounded border border-ink-12 bg-white p-4"
-                  >
-                    <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
-                      {place}
-                    </p>
-                    <p className="mt-1.5 font-display text-[14px] font-medium text-ink">
-                      {addr}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </aside>
-
-            {/* Right — form */}
-            <div className="md:col-span-7">
-              <div className="rounded border border-ink-12 bg-white">
-                <div className="flex items-center justify-between border-b border-ink-12 bg-cream-2 px-6 py-3">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
-                    Message · 2026-04
-                  </p>
-                  <p className="font-mono text-[11px] tabular text-ink-60">
-                    04 fields
-                  </p>
+          <div className="mt-10 space-y-6">
+            {[
+              { icon: MessageSquare, label: "General inquiries", value: "hello@truenorth.expert" },
+              { icon: Mail, label: "Expert applications", value: "apply@truenorth.expert" },
+              { icon: Building2, label: "Enterprise sales", value: "sales@truenorth.expert" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                  <item.icon className="h-5 w-5 text-slate-700" />
                 </div>
-
-                {submitted ? (
-                  <div className="flex flex-col items-center justify-center gap-4 px-6 py-20 text-center">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-sun">
-                      <Check className="h-6 w-6 text-ink" strokeWidth={2.5} />
-                    </div>
-                    <h3 className="font-display text-2xl font-medium text-ink">
-                      Message filed.
-                    </h3>
-                    <p className="max-w-sm text-[14px] leading-relaxed text-ink-60">
-                      A named human from our operations team will reply within
-                      one business day. If it is urgent, prefix the subject
-                      line with{" "}
-                      <span className="font-mono">[URGENT]</span>.
-                    </p>
-                    <Button
-                      tone="outline"
-                      size="md"
-                      onClick={() => setSubmitted(false)}
-                    >
-                      Send another
-                    </Button>
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={handleSubmit}
-                    className="grid grid-cols-2 gap-4 p-6"
-                  >
-                    <div className="col-span-2 sm:col-span-1">
-                      <FieldLabel htmlFor="name">
-                        Your name <span className="text-rust">*</span>
-                      </FieldLabel>
-                      <FieldInput
-                        id="name"
-                        required
-                        value={form.name}
-                        onChange={(e) =>
-                          setForm({ ...form, name: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="col-span-2 sm:col-span-1">
-                      <FieldLabel htmlFor="email">
-                        Work email <span className="text-rust">*</span>
-                      </FieldLabel>
-                      <FieldInput
-                        id="email"
-                        type="email"
-                        required
-                        value={form.email}
-                        onChange={(e) =>
-                          setForm({ ...form, email: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="col-span-2 sm:col-span-1">
-                      <FieldLabel htmlFor="company">Company</FieldLabel>
-                      <FieldInput
-                        id="company"
-                        value={form.company}
-                        onChange={(e) =>
-                          setForm({ ...form, company: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="col-span-2 sm:col-span-1">
-                      <FieldLabel htmlFor="topic">Desk</FieldLabel>
-                      <FieldSelect
-                        id="topic"
-                        value={form.topic}
-                        onChange={(e) =>
-                          setForm({ ...form, topic: e.target.value })
-                        }
-                      >
-                        <option value="general">General inquiry</option>
-                        <option value="bench">Bench / enterprise</option>
-                        <option value="apply">Apply as a contractor</option>
-                        <option value="press">Press / partnerships</option>
-                      </FieldSelect>
-                    </div>
-                    <div className="col-span-2">
-                      <FieldLabel htmlFor="message">
-                        Message <span className="text-rust">*</span>
-                      </FieldLabel>
-                      <FieldTextarea
-                        id="message"
-                        required
-                        rows={6}
-                        value={form.message}
-                        onChange={(e) =>
-                          setForm({ ...form, message: e.target.value })
-                        }
-                        placeholder="A short paragraph is plenty. Tell us the context, the ask, and the date it matters by."
-                      />
-                      <FieldHint>
-                        We reply inside one business day — often within the
-                        hour between 09:00–19:00 ET.
-                      </FieldHint>
-                    </div>
-                    <div className="col-span-2 flex items-center justify-between gap-4 border-t border-ink-12 pt-5">
-                      <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
-                        Confidential · never sold
-                      </p>
-                      <Button tone="ink" size="lg" arrow type="submit">
-                        Send message
-                      </Button>
-                    </div>
-                  </form>
-                )}
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wider text-slate-500">{item.label}</div>
+                  <div className="mt-0.5 text-sm font-medium text-slate-900">{item.value}</div>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
-        </Container>
-      </section>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-8">
+          {submitted ? (
+            <div className="py-12 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                <svg className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900">Message received</h3>
+              <p className="mt-2 text-sm text-slate-600">We&apos;ll get back to you within one business day.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Field label="Your name" required>
+                <input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10" />
+              </Field>
+              <Field label="Work email" required>
+                <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10" />
+              </Field>
+              <Field label="Company">
+                <input type="text" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10" />
+              </Field>
+              <Field label="How can we help?" required>
+                <textarea required rows={5} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10" />
+              </Field>
+              <button type="submit" className="w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-slate-800">Send message</button>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-900">{label}{required && <span className="text-rose-500"> *</span>}</span>
+      {children}
+    </label>
   );
 }
