@@ -1,0 +1,92 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  // Better Auth tables (user, session, account, verification) are managed
+  // automatically by the @convex-dev/better-auth component.
+
+  // AUTH STATS - Signup tracking for Shipper analytics dashboard
+  // Platform-managed table. Leave this intact.
+  authStats: defineTable({
+    date: v.string(),        // ISO date string "2024-01-15"
+    provider: v.string(),    // "email", "google", "anonymous"
+    signups: v.number(),     // Count of signups
+    lastUpdated: v.number(), // Timestamp
+  })
+    .index("date_provider", ["date", "provider"])
+    .index("date", ["date"]),
+
+  // Application tables
+  expertProfiles: defineTable({
+    userId: v.string(),
+    fullName: v.string(),
+    headline: v.string(),
+    bio: v.string(),
+    category: v.string(),
+    specialties: v.array(v.string()),
+    hourlyRate: v.number(),
+    currency: v.string(),
+    location: v.string(),
+    timezone: v.string(),
+    yearsExperience: v.number(),
+    availability: v.string(),
+    remoteOnly: v.boolean(),
+    avatarUrl: v.optional(v.string()),
+    coverImageUrl: v.optional(v.string()),
+    linkedinUrl: v.optional(v.string()),
+    websiteUrl: v.optional(v.string()),
+    certifications: v.array(v.string()),
+    languages: v.array(v.string()),
+    rating: v.number(),
+    reviewCount: v.number(),
+    completedProjects: v.number(),
+    isVerified: v.boolean(),
+    isPublished: v.boolean(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_category", ["category"])
+    .index("by_isPublished", ["isPublished"])
+    .index("by_isVerified", ["isVerified"]),
+
+  clientRequests: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    description: v.string(),
+    category: v.string(),
+    requiredSkills: v.array(v.string()),
+    budgetMin: v.number(),
+    budgetMax: v.number(),
+    currency: v.string(),
+    budgetType: v.string(),
+    engagementType: v.string(),
+    durationWeeks: v.number(),
+    startDate: v.optional(v.string()),
+    location: v.string(),
+    remoteOk: v.boolean(),
+    complianceRequirements: v.array(v.string()),
+    status: v.string(),
+    proposalCount: v.number(),
+    companyName: v.optional(v.string()),
+    contactEmail: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_category", ["category"])
+    .index("by_status", ["status"]),
+
+  proposals: defineTable({
+    userId: v.string(),
+    requestId: v.id("clientRequests"),
+    expertProfileId: v.id("expertProfiles"),
+    coverLetter: v.string(),
+    proposedRate: v.number(),
+    currency: v.string(),
+    rateType: v.string(),
+    estimatedDurationWeeks: v.number(),
+    availability: v.string(),
+    status: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_requestId", ["requestId"])
+    .index("by_expertProfileId", ["expertProfileId"])
+    .index("by_status", ["status"]),
+});
