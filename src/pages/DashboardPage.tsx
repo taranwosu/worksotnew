@@ -28,6 +28,7 @@ import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
 import { PortfolioSection } from "@/components/PortfolioSection";
 import { LeaveReviewList, ReceivedReviewsList } from "@/components/ReviewsSection";
+import { ContractsSection } from "@/components/ContractsSection";
 
 export function DashboardPage() {
   const { data: session, isPending } = useSession();
@@ -321,8 +322,9 @@ export function DashboardPage() {
           </Section>
         )}
 
-        {/* Pending reviews call-to-action */}
-        <div className="mt-10">
+        {/* Contracts and pending reviews */}
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <ContractsSection />
           <LeaveReviewList />
         </div>
 

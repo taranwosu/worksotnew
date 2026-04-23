@@ -11,11 +11,16 @@ import {
   MessageSquare,
   CircleDollarSign,
   Calendar,
+  FileSignature,
+  Paperclip,
+  Download,
+  FileText,
 } from "lucide-react";
 import { useState } from "react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { FileUpload, type UploadedFileMeta } from "@/components/FileUpload";
 
 export function ProjectWorkspacePage() {
   const { proposalId } = useParams({ strict: false }) as {
@@ -28,6 +33,14 @@ export function ProjectWorkspacePage() {
     api.milestones.listMilestones,
     session && proposalId ? { proposalId } : "skip"
   );
+  const contractRef = useQuery(
+    api.contracts.getContractByProposal,
+    session && proposalId ? { proposalId } : "skip"
+  );
+  const generateContract = useMutation(api.contracts.generateFromProposal);
+  const navigateTo = useNavigate();
+  const [creatingContract, setCreatingContract] = useState(false);
+  const [contractError, setContractError] = useState<string | null>(null);
 
   if (isPending) {
     return (
@@ -94,6 +107,72 @@ export function ProjectWorkspacePage() {
           <StatTile label="Progress" value={`${pct}%`} />
         </div>
       )}
+
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+              <FileSignature className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">
+                Statement of Work
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {contractRef
+                  ? contractRef.status === "signed"
+                    ? "Contract executed by both parties."
+                    : contractRef.status === "sent"
+                    ? "Awaiting signatures."
+                    : contractRef.status === "cancelled"
+                    ? "Contract cancelled."
+                    : "Draft — review before sending."
+                  : role === "client"
+                  ? "Generate a contract pre-filled from this proposal. You can edit before sending."
+                  : "No contract yet — the client can generate one from their side."}
+              </p>
+            </div>
+          </div>
+          <div>
+            {contractRef ? (
+              <Link
+                to="/contracts/$contractId"
+                params={{ contractId: contractRef._id }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+              >
+                Open contract
+              </Link>
+            ) : role === "client" ? (
+              <button
+                type="button"
+                disabled={creatingContract}
+                onClick={async () => {
+                  setContractError(null);
+                  setCreatingContract(true);
+                  try {
+                    const id = await generateContract({ proposalId });
+                    navigateTo({
+                      to: "/contracts/$contractId",
+                      params: { contractId: id },
+                    });
+                  } catch (e: any) {
+                    setContractError(e?.message ?? "Could not generate contract");
+                  } finally {
+                    setCreatingContract(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
+              >
+                {creatingContract && <Loader2 className="h-4 w-4 animate-spin" />}
+                Generate contract
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {contractError && (
+          <p className="mt-2 text-xs text-rose-600">{contractError}</p>
+        )}
+      </div>
 
       {role === "client" && (
         <div className="mt-6">
@@ -333,6 +412,7 @@ function MilestoneCard({
   const pay = useMutation(api.milestones.markMilestonePaid);
   const cancel = useMutation(api.milestones.cancelMilestone);
   const [deliverableNote, setDeliverableNote] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<UploadedFileMeta[]>([]);
   const [showSubmit, setShowSubmit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -386,12 +466,39 @@ function MilestoneCard({
               {milestone.description}
             </p>
           )}
-          {milestone.deliverableNote && (
+          {(milestone.deliverableNote ||
+            (milestone.attachments && milestone.attachments.length > 0)) && (
             <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-              <p className="font-semibold text-slate-700">Expert note</p>
-              <p className="mt-0.5 whitespace-pre-wrap">
-                {milestone.deliverableNote}
-              </p>
+              <p className="font-semibold text-slate-700">Expert submission</p>
+              {milestone.deliverableNote && (
+                <p className="mt-1 whitespace-pre-wrap">
+                  {milestone.deliverableNote}
+                </p>
+              )}
+              {milestone.attachments && milestone.attachments.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {milestone.attachments.map((att: any) => (
+                    <li key={att.storageId} className="flex items-center gap-2">
+                      <FileText className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="min-w-0 flex-1 truncate text-slate-700">
+                        {att.fileName}
+                        {att.size ? ` · ${formatFileSize(att.size)}` : ""}
+                      </span>
+                      {att.url && (
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          <Download className="h-3 w-3" />
+                          Download
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -456,16 +563,56 @@ function MilestoneCard({
               <textarea
                 value={deliverableNote}
                 onChange={(e) => setDeliverableNote(e.target.value)}
-                placeholder="Summarise what you delivered & link to files"
+                placeholder="Summarise what you delivered"
                 rows={3}
                 className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
               />
-              <div className="mt-2 flex justify-end gap-2">
+              <label className="mb-1 mt-3 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                Attachments
+              </label>
+              <FileUpload
+                compact
+                label="Attach file"
+                maxSizeMB={25}
+                onUploaded={(meta) =>
+                  setPendingAttachments((list) => [...list, meta])
+                }
+              />
+              {pendingAttachments.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {pendingAttachments.map((att, i) => (
+                    <li
+                      key={att.storageId}
+                      className="flex items-center gap-2 rounded-md bg-white px-2 py-1 text-xs text-slate-700"
+                    >
+                      <Paperclip className="h-3 w-3 text-slate-400" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {att.fileName}
+                        {att.size ? ` · ${formatFileSize(att.size)}` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingAttachments((list) =>
+                            list.filter((_, j) => j !== i)
+                          )
+                        }
+                        className="text-slate-400 hover:text-rose-600"
+                        aria-label="Remove"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-3 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setShowSubmit(false);
                     setDeliverableNote("");
+                    setPendingAttachments([]);
                   }}
                   disabled={busy}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
@@ -479,10 +626,20 @@ function MilestoneCard({
                       submit({
                         milestoneId: milestone._id,
                         deliverableNote: deliverableNote.trim() || undefined,
+                        attachments:
+                          pendingAttachments.length > 0
+                            ? pendingAttachments.map((a) => ({
+                                storageId: a.storageId,
+                                fileName: a.fileName,
+                                contentType: a.contentType,
+                                size: a.size,
+                              }))
+                            : undefined,
                       })
                     );
                     setShowSubmit(false);
                     setDeliverableNote("");
+                    setPendingAttachments([]);
                   }}
                   disabled={busy}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white"
@@ -542,4 +699,10 @@ function formatCurrency(amount: number, currency: string): string {
   } catch {
     return `${currency} ${amount.toLocaleString()}`;
   }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

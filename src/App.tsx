@@ -22,6 +22,7 @@ import { PostRequestPage } from "./pages/PostRequestPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { ProjectWorkspacePage } from "./pages/ProjectWorkspacePage";
+import { ContractPage } from "./pages/ContractPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -123,6 +124,12 @@ const projectWorkspaceRoute = createRoute({
   component: ProjectWorkspacePage,
 });
 
+const contractRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contracts/$contractId",
+  component: ContractPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   expertsRoute,
@@ -138,6 +145,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   messagesRoute,
   projectWorkspaceRoute,
+  contractRoute,
 ]);
 
 const router = createRouter({
