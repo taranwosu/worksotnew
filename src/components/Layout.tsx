@@ -77,29 +77,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-cream text-ink">
-      {/* Announcement bar */}
-      <div className="bg-ink text-cream">
-        <Container className="flex h-9 items-center justify-between gap-4 text-[12px]">
-          <div className="flex items-center gap-3">
-            <span className="hidden h-1.5 w-1.5 rounded-full bg-sun sm:block" />
-            <span className="font-mono uppercase tracking-[0.14em] text-cream/70">
-              Issue 04 · Spring 2026
-            </span>
-            <span className="hidden text-cream/40 sm:inline">/</span>
-            <span className="hidden sm:inline">
-              Now hiring fractional CFOs, SOC 2 leads &amp; staff designers.
-            </span>
-          </div>
-          <Link
-            to="/for-experts"
-            className="group inline-flex items-center gap-1 text-cream/80 hover:text-cream"
-          >
-            Join the network
-            <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" />
-          </Link>
-        </Container>
-      </div>
-
       {/* Header */}
       <header
         className={cn(

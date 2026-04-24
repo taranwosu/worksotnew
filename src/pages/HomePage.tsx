@@ -152,20 +152,6 @@ export function HomePage() {
         </svg>
 
         <Container>
-          {/* Dateline row */}
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-ink-12 pb-6">
-            <div className="eyebrow flex items-center gap-3 text-ink-60">
-              <span className="text-ink">§ 01</span>
-              <span className="text-ink-20">/</span>
-              <span>The premium contractor network</span>
-            </div>
-            <div className="hidden items-center gap-6 text-[12px] text-ink-60 md:flex">
-              <span className="font-mono">New York · London · Remote</span>
-              <span className="text-ink-20">/</span>
-              <span className="font-mono">Ed. 04.26</span>
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 gap-10 pt-10 md:grid-cols-12 md:gap-8 md:pt-14 lg:pt-16">
             {/* Left column — headline & meta */}
             <div className="md:col-span-8">
