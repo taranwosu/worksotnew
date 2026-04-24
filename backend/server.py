@@ -1412,6 +1412,35 @@ async def admin_resolve_dispute(dispute_id: str, payload: DisputeResolve, admin:
     else:  # refund
         await db.milestones.update_one({"id": ms["id"]}, {"$set": {"status": "pending", "funded_at": None}})
         resolution = "Funds refunded to client."
+        # Audit: write a refund row in the ledger so accounting can trace it.
+        # We search for the most-recent paid transaction on this milestone and
+        # mirror it with a negative amount and kind=refund.
+        last = await db.payment_transactions.find_one(
+            {"milestone_id": ms["id"], "payment_status": "paid"},
+            {"_id": 0},
+            sort=[("updated_at", -1)],
+        )
+        await db.payment_transactions.insert_one({
+            "session_id": f"refund_{uuid.uuid4().hex[:12]}",
+            "user_id": c["client_user_id"],
+            "milestone_id": ms["id"],
+            "contract_id": c["id"],
+            "amount": -float(ms["amount"]),
+            "currency": (last or {}).get("currency", "usd"),
+            "status": "refunded",
+            "payment_status": "refunded",
+            "kind": "refund",
+            "origin_session_id": (last or {}).get("session_id"),
+            "resolved_by_admin_id": admin.user_id,
+            "dispute_id": dispute_id,
+            "metadata": {
+                "reason": "admin_dispute_resolution",
+                "dispute_id": dispute_id,
+                "resolution_note": payload.note,
+            },
+            "created_at": _now(),
+            "updated_at": _now(),
+        })
     await db.disputes.update_one(
         {"id": dispute_id},
         {"$set": {

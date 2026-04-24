@@ -14,7 +14,7 @@ import {
   Quote,
 } from "lucide-react";
 import type { Expert } from "@/data/experts";
-import { fetchExpert } from "@/lib/api";
+import { fetchExpert, getExpertReviews, type Review } from "@/lib/api";
 import {
   Container,
   Eyebrow,
@@ -23,39 +23,22 @@ import {
   Tag,
 } from "@/components/primitives";
 
-const mockReviews = [
-  {
-    author: "Lena Rodriguez",
-    role: "Head of Finance, Plume",
-    rating: 5,
-    quote:
-      "Brought our R&D credit work to a clean close in 6 weeks and found us $184k we hadn&rsquo;t anticipated. Crisp documentation, zero hand-holding required.",
-  },
-  {
-    author: "Kenji Ito",
-    role: "CEO, Orbital",
-    rating: 5,
-    quote:
-      "The SOW flowed through legal on the first round — unheard of. A rare practitioner who writes like a technical owner and explains like a board member.",
-  },
-  {
-    author: "Hannah Cole",
-    role: "Controller, Thatch",
-    rating: 5,
-    quote:
-      "Embedded two days a week for a quarter and left behind a repeatable monthly close that my team still runs unchanged.",
-  },
-];
-
 export function ExpertDetailPage() {
   const { expertId } = useParams({ strict: false }) as { expertId: string };
   const [expert, setExpert] = useState<Expert | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetchExpert(expertId)
-      .then(setExpert)
+    Promise.all([
+      fetchExpert(expertId),
+      getExpertReviews(expertId).catch(() => [] as Review[]),
+    ])
+      .then(([e, r]) => {
+        setExpert(e);
+        setReviews(r);
+      })
       .catch(() => setExpert(null))
       .finally(() => setLoading(false));
   }, [expertId]);
@@ -232,41 +215,52 @@ export function ExpertDetailPage() {
               </Section>
 
               <Section index="§ 04" kicker="Client notes">
-                <ul className="divide-y divide-ink-12 border-y border-ink-12">
-                  {mockReviews.map((r, i) => (
-                    <li
-                      key={i}
-                      className="grid grid-cols-12 items-start gap-4 py-8"
-                    >
-                      <div className="col-span-12 md:col-span-2">
-                        <Quote
-                          className="h-5 w-5 text-sun"
-                          strokeWidth={1.5}
-                        />
-                        <div className="mt-2 flex items-center gap-0.5">
-                          {Array.from({ length: r.rating }).map((_, j) => (
-                            <Star
-                              key={j}
-                              className="h-3.5 w-3.5 fill-sun text-sun"
-                            />
-                          ))}
+                {reviews.length === 0 ? (
+                  <div className="rounded border border-dashed border-ink-20 bg-white px-6 py-10 text-center text-[13px] text-ink-60" data-testid="no-reviews-empty">
+                    No published reviews yet. Reviews appear here after a completed engagement.
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-ink-12 border-y border-ink-12" data-testid="expert-reviews">
+                    {reviews.map((r) => (
+                      <li
+                        key={r.id}
+                        className="grid grid-cols-12 items-start gap-4 py-8"
+                      >
+                        <div className="col-span-12 md:col-span-2">
+                          <Quote
+                            className="h-5 w-5 text-sun"
+                            strokeWidth={1.5}
+                          />
+                          <div className="mt-2 flex items-center gap-0.5">
+                            {Array.from({ length: 5 }).map((_, j) => (
+                              <Star
+                                key={j}
+                                className={`h-3.5 w-3.5 ${
+                                  j < r.rating ? "fill-sun text-sun" : "text-ink-20"
+                                }`}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div className="col-span-12 md:col-span-10">
-                        <p className="font-display text-[clamp(1.125rem,1.7vw,1.375rem)] leading-[1.4] tracking-[-0.01em] text-ink">
-                          &ldquo;{r.quote}&rdquo;
-                        </p>
-                        <p className="mt-4 text-[13px] text-ink-60">
-                          <span className="font-semibold text-ink">
-                            {r.author}
-                          </span>
-                          <span className="mx-2 text-ink-20">/</span>
-                          {r.role}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                        <div className="col-span-12 md:col-span-10">
+                          <p className="font-display text-[clamp(1.125rem,1.7vw,1.375rem)] leading-[1.4] tracking-[-0.01em] text-ink">
+                            &ldquo;{r.comment}&rdquo;
+                          </p>
+                          <p className="mt-4 text-[13px] text-ink-60">
+                            <span className="font-semibold text-ink">
+                              {r.reviewer_name}
+                            </span>
+                            <span className="mx-2 text-ink-20">/</span>
+                            {new Date(r.created_at).toLocaleDateString(undefined, {
+                              year: "numeric",
+                              month: "short",
+                            })}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </Section>
             </div>
 
