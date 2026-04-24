@@ -314,19 +314,23 @@ export function ForExpertsPage() {
                   that I would have picked out of a pile anyway.&rdquo;
                 </p>
                 <footer className="mt-8 flex items-center gap-4">
-                  <img
-                    src={experts[0].image}
-                    alt=""
-                    className="h-12 w-12 rounded-full object-cover"
-                  />
-                  <div>
-                    <p className="font-display text-base font-semibold text-ink">
-                      {experts[0].name}
-                    </p>
-                    <p className="text-[13px] text-ink-60">
-                      {experts[0].title}
-                    </p>
-                  </div>
+                  {experts.length > 0 && (
+                    <>
+                      <img
+                        src={experts[0].image}
+                        alt=""
+                        className="h-12 w-12 rounded-full object-cover"
+                      />
+                      <div>
+                        <p className="font-display text-base font-semibold text-ink">
+                          {experts[0].name}
+                        </p>
+                        <p className="text-[13px] text-ink-60">
+                          {experts[0].title}
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </footer>
               </blockquote>
             </div>
