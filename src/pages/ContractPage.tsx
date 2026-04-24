@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearch } from "@tanstack/react-router";
-import { Loader2, CheckCircle2, ArrowUpRight, CircleDollarSign, Star, AlertTriangle } from "lucide-react";
+import { Loader2, CheckCircle2, ArrowUpRight, CircleDollarSign, Star, MessageSquare } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import {
   getContract,
@@ -9,12 +9,15 @@ import {
   submitMilestone,
   releaseMilestone,
   fileDispute,
+  getContractDisputes,
   getContractReviews,
   leaveReview,
   type Contract,
   type Milestone,
   type Review,
+  type Dispute,
 } from "@/lib/api";
+import { DisputeThread } from "@/components/DisputeThread";
 import { Container, Eyebrow, Button, Tag, FieldTextarea, FieldLabel } from "@/components/primitives";
 
 export function ContractPage() {
@@ -34,17 +37,21 @@ export function ContractPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [openThread, setOpenThread] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       getContract(contractId),
       getContractReviews(contractId).catch(() => [] as Review[]),
+      getContractDisputes(contractId).catch(() => [] as Dispute[]),
     ])
-      .then(([{ contract, milestones }, revs]) => {
+      .then(([{ contract, milestones }, revs, dps]) => {
         setContract(contract);
         setMilestones(milestones);
         setReviews(revs);
+        setDisputes(dps);
       })
       .catch(() => setContract(null))
       .finally(() => setLoading(false));
@@ -224,11 +231,21 @@ export function ContractPage() {
                       <CheckCircle2 className="h-4 w-4 text-sun-2" /> Paid to expert
                     </span>
                   )}
-                  {m.status === "disputed" && (
-                    <span className="inline-flex items-center gap-1.5 text-[12.5px] text-rust">
-                      <AlertTriangle className="h-4 w-4" /> Under dispute — admin is reviewing
-                    </span>
-                  )}
+                  {m.status === "disputed" && (() => {
+                    const d = disputes.find((x) => x.milestone_id === m.id && x.status === "open");
+                    return (
+                      <Button
+                        tone="outline"
+                        size="sm"
+                        data-testid={`view-dispute-${m.id}`}
+                        iconLeft={<MessageSquare className="h-4 w-4" />}
+                        onClick={() => setOpenThread((prev) => (prev === d?.id ? null : d?.id ?? null))}
+                        disabled={!d}
+                      >
+                        {openThread === d?.id ? "Hide dispute thread" : "View dispute thread"}
+                      </Button>
+                    );
+                  })()}
                   {(isClient || isExpert) && (m.status === "funded" || m.status === "submitted") && (
                     <Button
                       data-testid={`dispute-${m.id}`}
@@ -262,6 +279,19 @@ export function ContractPage() {
                     </div>
                   </form>
                 )}
+
+                {m.status === "disputed" && (() => {
+                  const d = disputes.find((x) => x.milestone_id === m.id);
+                  if (!d || openThread !== d.id) return null;
+                  return (
+                    <div className="mt-4" data-testid={`dispute-thread-${m.id}`}>
+                      <DisputeThread
+                        disputeId={d.id}
+                        onResolved={() => { setOpenThread(null); load(); }}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

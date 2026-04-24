@@ -358,12 +358,13 @@ export type FileMeta = {
   created_at: string;
 };
 
-export async function uploadFile(file: File, scope: { conversation_id?: string; contract_id?: string; milestone_id?: string }): Promise<FileMeta> {
+export async function uploadFile(file: File, scope: { conversation_id?: string; contract_id?: string; milestone_id?: string; dispute_id?: string }): Promise<FileMeta> {
   const form = new FormData();
   form.append("file", file);
   if (scope.conversation_id) form.append("conversation_id", scope.conversation_id);
   if (scope.contract_id) form.append("contract_id", scope.contract_id);
   if (scope.milestone_id) form.append("milestone_id", scope.milestone_id);
+  if (scope.dispute_id) form.append("dispute_id", scope.dispute_id);
   const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/files/upload`, {
     method: "POST",
     credentials: "include",
@@ -437,3 +438,31 @@ export type MessageAttach = {
   file_size?: number | null;
   file_content_type?: string | null;
 };
+
+// ================= Dispute thread =================
+export type DisputeMessage = {
+  id: string;
+  dispute_id: string;
+  sender_user_id: string;
+  sender_name: string;
+  sender_role: "client" | "expert" | "admin";
+  body: string;
+  file_id?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_content_type?: string | null;
+  created_at: string;
+};
+
+export async function getDispute(id: string) { return req<Dispute>(`/api/disputes/${id}`); }
+export async function getDisputeMessages(id: string) { return req<DisputeMessage[]>(`/api/disputes/${id}/messages`); }
+export async function postDisputeMessage(id: string, body: string, file_id?: string) {
+  return req<DisputeMessage>(`/api/disputes/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body, file_id }),
+  });
+}
+
+export async function getContractDisputes(contractId: string) {
+  return req<Dispute[]>(`/api/contracts/${contractId}/disputes`);
+}

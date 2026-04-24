@@ -26,7 +26,7 @@ Premium curated marketplace for senior project-based work (accountants, consulta
 - **In-app notifications**: bell + badge + panel with polling; triggers on proposal.new/accepted/rejected, milestone.submitted/released, dispute.opened/resolved, review.received, contract.completed
 - **File uploads**: local disk with per-scope auth (conversation / contract / milestone); Paperclip attach in Messages renders file cards with download
 - **Reviews** (post-completion only): 1–5★ + comment; one per reviewer per contract; auto-recomputes `rating` and `reviewCount` on expert profile; public on `/experts/{id}/reviews`
-- **Disputes**: Either party can file on funded/submitted milestone → status becomes `disputed`; admin resolves with `release` (pays expert, auto-completes contract if final) or `refund` (milestone → `pending`); **refund inserts a negative audit row in `payment_transactions`** with `kind="refund"`, `origin_session_id`, `dispute_id`, `resolved_by_admin_id`; notifies both parties + admins
+- **Disputes with full thread**: Either party can file on a funded/submitted milestone → status becomes `disputed`; **each dispute has a message thread + evidence uploads** (files scoped to `dispute_id`, rendered as download cards); admin resolves inline from the thread via `release` or `refund`; refund inserts a negative audit row in `payment_transactions` with `kind="refund"`, `origin_session_id`, `dispute_id`, `resolved_by_admin_id`; every dispute message also fires `dispute.message` notifications to the other parties + admins
 - **Public expert profile** now lists real reviews via `/api/experts/{id}/reviews` (empty state when none)
 - **Admin console** with 4 tabs: Vetting queue · All experts · Briefs · Disputes (resolve)
 - Graceful Stripe status fallback (cached tx state when proxy session can't be retrieved)
@@ -36,7 +36,6 @@ Premium curated marketplace for senior project-based work (accountants, consulta
 ### 🚧 Deferred / backlog
 - Email provider wiring (Resend) — stub logs in place, just needs API key
 - `server.py` split into routers (auth/briefs/proposals/contracts/payments/messages/notifications/files/reviews/disputes/admin)
-- Dispute message thread + evidence upload (currently single-shot reason)
 - Invoice / 1099 generation
 - Time tracking, team accounts, referral program, expert analytics, saved searches, blog
 

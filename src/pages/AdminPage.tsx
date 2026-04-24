@@ -10,11 +10,11 @@ import {
   adminTogglePublish,
   adminListBriefs,
   adminListDisputes,
-  adminResolveDispute,
   type AdminStats,
   type Brief,
   type Dispute,
 } from "@/lib/api";
+import { DisputeThread } from "@/components/DisputeThread";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 
@@ -86,15 +86,11 @@ export function AdminPage() {
     await adminTogglePublish(id);
     load();
   };
-  const handleResolve = async (id: string, action: "release" | "refund") => {
-    const note = window.prompt(`Optional note for ${action}:`) ?? undefined;
-    await adminResolveDispute(id, action, note || undefined);
-    load();
-  };
   const handleSignOut = async () => {
     await signOutUser();
     navigate({ to: "/admin/login" });
   };
+  const [openDispute, setOpenDispute] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-ink text-cream">
@@ -172,30 +168,34 @@ export function AdminPage() {
             ) : disputes.map((d) => (
               <div key={d.id} className="rounded border border-cream/10 bg-ink-2 p-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cream/60">
                       Contract {d.contract_id} · Milestone {d.milestone_id}
                     </p>
                     <p className="mt-1 font-display text-[15px] font-semibold">
                       Filed by {d.opened_by_name}
                     </p>
+                    <p className="mt-1 line-clamp-2 text-[12.5px] text-cream/70">{d.reason}</p>
                   </div>
-                  <Tag tone={d.status === "open" ? "sun" : "outline"} size="sm">{d.status}</Tag>
+                  <div className="flex items-center gap-2">
+                    <Tag tone={d.status === "open" ? "sun" : "outline"} size="sm">{d.status}</Tag>
+                    <Button
+                      tone="outline"
+                      size="sm"
+                      data-testid={`admin-open-thread-${d.id}`}
+                      onClick={() => setOpenDispute((p) => (p === d.id ? null : d.id))}
+                    >
+                      {openDispute === d.id ? "Hide thread" : "Open thread"}
+                    </Button>
+                  </div>
                 </div>
-                <p className="mt-3 whitespace-pre-wrap text-[13.5px] leading-relaxed text-cream/80">{d.reason}</p>
-                {d.status === "resolved" ? (
-                  <p className="mt-4 rounded border border-cream/10 bg-ink-3 px-3 py-2 text-[12.5px] text-cream/70">
-                    <strong>{d.resolution_action}</strong>: {d.resolution}
-                    {d.resolution_note && <span className="block mt-1 text-cream/50">{d.resolution_note}</span>}
-                  </p>
-                ) : (
-                  <div className="mt-4 flex gap-2">
-                    <Button data-testid={`release-${d.id}`} tone="sun" size="sm" onClick={() => handleResolve(d.id, "release")}>
-                      Release to expert
-                    </Button>
-                    <Button data-testid={`refund-${d.id}`} tone="outline" size="sm" onClick={() => handleResolve(d.id, "refund")}>
-                      Refund client
-                    </Button>
+                {openDispute === d.id && (
+                  <div className="mt-4" data-testid={`admin-dispute-thread-${d.id}`}>
+                    <DisputeThread
+                      disputeId={d.id}
+                      theme="ink"
+                      onResolved={() => { setOpenDispute(null); load(); }}
+                    />
                   </div>
                 )}
               </div>

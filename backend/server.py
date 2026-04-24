@@ -1135,6 +1135,7 @@ class FileMeta(BaseModel):
     conversation_id: Optional[str] = None
     contract_id: Optional[str] = None
     milestone_id: Optional[str] = None
+    dispute_id: Optional[str] = None
     created_at: datetime
 
 
@@ -1143,6 +1144,7 @@ async def _authorize_file_scope(
     conversation_id: Optional[str],
     contract_id: Optional[str],
     milestone_id: Optional[str],
+    dispute_id: Optional[str] = None,
 ) -> None:
     if conversation_id:
         c = await db.conversations.find_one({"id": conversation_id}, {"_id": 0, "participants": 1})
@@ -1159,6 +1161,13 @@ async def _authorize_file_scope(
         c = await db.contracts.find_one({"id": ms["contract_id"]}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
         if not c or user.user_id not in (c["client_user_id"], c["expert_user_id"]):
             raise HTTPException(status_code=403, detail="Not a party to this contract")
+    if dispute_id:
+        d = await db.disputes.find_one({"id": dispute_id}, {"_id": 0, "contract_id": 1})
+        if not d:
+            raise HTTPException(status_code=404, detail="Dispute not found")
+        c = await db.contracts.find_one({"id": d["contract_id"]}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
+        if not c or (user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin"):
+            raise HTTPException(status_code=403, detail="Not a party to this dispute")
 
 
 @app.post("/api/files/upload", response_model=FileMeta)
@@ -1167,9 +1176,10 @@ async def upload_file(
     conversation_id: Optional[str] = Form(None),
     contract_id: Optional[str] = Form(None),
     milestone_id: Optional[str] = Form(None),
+    dispute_id: Optional[str] = Form(None),
     user: User = Depends(get_current_user),
 ):
-    await _authorize_file_scope(user, conversation_id, contract_id, milestone_id)
+    await _authorize_file_scope(user, conversation_id, contract_id, milestone_id, dispute_id)
     fid = f"fil_{uuid.uuid4().hex[:10]}"
     safe_name = (file.filename or "upload").replace("/", "_")[:120]
     # Preserve extension if present
@@ -1195,6 +1205,7 @@ async def upload_file(
         "conversation_id": conversation_id,
         "contract_id": contract_id,
         "milestone_id": milestone_id,
+        "dispute_id": dispute_id,
         "storage_path": str(dest),
         "created_at": _now(),
     }
@@ -1382,12 +1393,128 @@ async def file_dispute(milestone_id: str, payload: DisputeIn, user: User = Depen
     return Dispute(**doc)
 
 
+class DisputeMessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+    file_id: Optional[str] = None
+
+
+class DisputeMessage(BaseModel):
+    id: str
+    dispute_id: str
+    sender_user_id: str
+    sender_name: str
+    sender_role: str  # client | expert | admin
+    body: str
+    file_id: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    file_content_type: Optional[str] = None
+    created_at: datetime
+
+
+async def _dispute_access(user: User, dispute_id: str) -> tuple[dict, dict, str]:
+    """Return (dispute, contract, sender_role) if user can access this dispute."""
+    d = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    c = await db.contracts.find_one({"id": d["contract_id"]}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contract missing")
+    if user.role == "admin":
+        role = "admin"
+    elif user.user_id == c["client_user_id"]:
+        role = "client"
+    elif user.user_id == c["expert_user_id"]:
+        role = "expert"
+    else:
+        raise HTTPException(status_code=403, detail="Not a party to this dispute")
+    return d, c, role
+
+
+@app.get("/api/disputes/{dispute_id}", response_model=Dispute)
+async def get_dispute(dispute_id: str, user: User = Depends(get_current_user)):
+    d, _, _ = await _dispute_access(user, dispute_id)
+    return Dispute(**d)
+
+
+@app.get("/api/disputes/{dispute_id}/messages", response_model=List[DisputeMessage])
+async def get_dispute_messages(dispute_id: str, user: User = Depends(get_current_user)):
+    await _dispute_access(user, dispute_id)
+    docs = await db.dispute_messages.find(
+        {"dispute_id": dispute_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(length=500)
+    return [DisputeMessage(**d) for d in docs]
+
+
+@app.post("/api/disputes/{dispute_id}/messages", response_model=DisputeMessage)
+async def post_dispute_message(
+    dispute_id: str,
+    payload: DisputeMessageIn,
+    user: User = Depends(get_current_user),
+):
+    d, c, role = await _dispute_access(user, dispute_id)
+    file_meta: dict = {}
+    if payload.file_id:
+        f = await db.files.find_one({"id": payload.file_id}, {"_id": 0})
+        if not f or f.get("dispute_id") != dispute_id:
+            raise HTTPException(status_code=400, detail="Invalid file attachment")
+        file_meta = {
+            "file_id": f["id"],
+            "file_name": f["filename"],
+            "file_size": f["size"],
+            "file_content_type": f["content_type"],
+        }
+    mid = f"dmg_{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": mid,
+        "dispute_id": dispute_id,
+        "sender_user_id": user.user_id,
+        "sender_name": user.name,
+        "sender_role": role,
+        "body": payload.body,
+        "created_at": _now(),
+        **file_meta,
+    }
+    await db.dispute_messages.insert_one(doc)
+    # Notify the other parties (not the sender)
+    targets: set[str] = set()
+    if role != "client":
+        targets.add(c["client_user_id"])
+    if role != "expert":
+        targets.add(c["expert_user_id"])
+    if role != "admin":
+        async for a in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
+            targets.add(a["user_id"])
+    for uid in targets:
+        await _notify(
+            uid,
+            type="dispute.message",
+            title=f"New evidence on dispute",
+            body=payload.body[:140],
+            href=f"/contracts/{c['id']}",
+            entity_id=dispute_id,
+        )
+    doc.pop("_id", None)
+    return DisputeMessage(**doc)
+
+
 @app.get("/api/admin/disputes", response_model=List[Dispute])
 async def admin_list_disputes(status: Optional[str] = None, user: User = Depends(require_admin)):
     q: dict = {}
     if status:
         q["status"] = status
     docs = await db.disputes.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    return [Dispute(**d) for d in docs]
+
+
+@app.get("/api/contracts/{contract_id}/disputes", response_model=List[Dispute])
+async def contract_disputes(contract_id: str, user: User = Depends(get_current_user)):
+    c = await db.contracts.find_one({"id": contract_id}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    if user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not a party to this contract")
+    docs = await db.disputes.find({"contract_id": contract_id}, {"_id": 0}).sort("created_at", -1).to_list(length=100)
     return [Dispute(**d) for d in docs]
 
 
@@ -1496,6 +1623,8 @@ async def _startup():
     await db.reviews.create_index("reviewee_user_id")
     await db.disputes.create_index("id", unique=True)
     await db.disputes.create_index("status")
+    await db.dispute_messages.create_index("id", unique=True)
+    await db.dispute_messages.create_index("dispute_id")
 
     # Seed admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})
