@@ -1,29 +1,33 @@
 # WorkSoy — Test Credentials
 
-## Test JWT users (email/password)
-| Role | Email | Password | Notes |
-|---|---|---|---|
-| Client | `alice@worksoy.com` | `Passw0rd!` | Seeded via /api/auth/register |
+## JWT users
+| Role | Email | Password |
+|---|---|---|
+| Client | `alice@worksoy.com` | `Passw0rd!` |
+| Expert | `expert1@worksoy.com` | `Passw0rd!` |
+| Admin  | `admin@worksoy.com` | `WorkSoy!Admin2026` |
 
-## Google OAuth (Emergent-managed)
-Any Google account works through the Emergent auth flow. The user is auto-created on first sign-in with `provider: "google"` and `role: "client"`.
+The admin account is seeded automatically on backend startup.
 
-## Admin (not yet seeded — pending iteration)
-A separate `/admin` login with its own credentials is planned for the next iteration. No admin accounts exist yet.
+## Admin console
+- Login page: `/admin/login`
+- Dashboard:  `/admin` (redirects to /admin/login if not authenticated as admin)
 
-## Quick commands
+## Stripe (test mode)
+`STRIPE_API_KEY=sk_test_emergent` is in `/app/backend/.env`. Use any Stripe test card (e.g. `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP) at checkout.
+
+## Quick E2E flow
+1. Sign in as Alice (client) → /post-request → submit a brief
+2. Sign out → Sign up as a new user with role=`expert` → /onboarding/expert → publish profile → /briefs → send a proposal
+3. Sign back in as Alice → /dashboard → open brief → "Accept & open contract"
+4. On contract page: "Fund milestone" → Stripe test card → redirected back → milestone status = funded
+5. Switch to expert account → "Mark delivered"
+6. Switch back to Alice → "Release to expert"
+
+## API helpers
 
 ```bash
-# Register
-curl -X POST "$REACT_APP_BACKEND_URL/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"alice@worksoy.com","password":"Passw0rd!","name":"Alice"}'
-
-# Login (sets cookie + returns session_token)
-curl -X POST "$REACT_APP_BACKEND_URL/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"alice@worksoy.com","password":"Passw0rd!"}'
-
-# Current user
-curl "$REACT_APP_BACKEND_URL/api/auth/me" -H "Authorization: Bearer <token>"
+API=$REACT_APP_BACKEND_URL
+curl -s -X POST $API/api/auth/login -H "Content-Type: application/json" \
+  -d '{"email":"admin@worksoy.com","password":"WorkSoy!Admin2026"}'
 ```
