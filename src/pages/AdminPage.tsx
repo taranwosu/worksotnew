@@ -144,7 +144,7 @@ export function AdminPage() {
                 ? `All experts (${experts.length})`
                 : t === "briefs"
                 ? `Briefs (${briefs.length})`
-                : `Disputes (${disputes.filter((d) => d.status === "open").length})`}
+                : `Disputes (${disputes.length})`}
             </button>
           ))}
         </div>
