@@ -131,6 +131,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
                 <div className="relative ml-1" ref={profileRef}>
                   <button
+                    data-testid="user-menu-trigger"
                     onClick={() => setProfileOpen(!profileOpen)}
                     className="flex items-center gap-2 rounded-pill border border-ink-12 bg-white p-1 pr-3 text-[13px] transition-colors hover:border-ink"
                   >
@@ -195,6 +196,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </div>
                       <div className="border-t border-ink-08">
                         <button
+                          data-testid="user-menu-signout"
                           onClick={handleSignOut}
                           className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] text-ink hover:bg-cream-2"
                         >

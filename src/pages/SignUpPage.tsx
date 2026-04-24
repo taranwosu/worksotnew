@@ -3,9 +3,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2, Briefcase, UserCheck } from "lucide-react";
 import {
   AUTH_CONFIG,
-  signUpWithEmail,
   signInWithGoogle,
+  useAuth,
 } from "@/lib/auth-client";
+import { apiRegister } from "@/lib/api";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -19,6 +20,7 @@ type Role = "client" | "expert";
 
 export function SignUpPage() {
   const navigate = useNavigate();
+  const { setUser } = useAuth();
   const [role, setRole] = useState<Role>("client");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -30,16 +32,18 @@ export function SignUpPage() {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
-    const result = await signUpWithEmail(email, password, name);
-    setIsLoading(false);
-    if (!result.success) {
-      setError(result.error?.message ?? "Sign up failed");
-      return;
-    }
-    if (role === "expert") {
-      navigate({ to: "/onboarding/expert" });
-    } else {
-      navigate({ to: "/dashboard" });
+    try {
+      const { user } = await apiRegister(email, password, name);
+      setUser(user);
+      if (role === "expert") {
+        navigate({ to: "/onboarding/expert" });
+      } else {
+        navigate({ to: "/dashboard" });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign up failed");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -176,6 +180,7 @@ export function SignUpPage() {
           </div>
 
           <Button
+            data-testid="signup-submit"
             tone="ink"
             size="lg"
             type="submit"

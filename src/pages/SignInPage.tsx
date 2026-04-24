@@ -3,9 +3,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import {
   AUTH_CONFIG,
-  signInWithEmail,
   signInWithGoogle,
+  useAuth,
 } from "@/lib/auth-client";
+import { apiLogin } from "@/lib/api";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -16,6 +17,7 @@ import {
 
 export function SignInPage() {
   const navigate = useNavigate();
+  const { setUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,13 +27,15 @@ export function SignInPage() {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
-    const result = await signInWithEmail(email, password);
-    setIsLoading(false);
-    if (!result.success) {
-      setError(result.error?.message ?? "Sign in failed");
-      return;
+    try {
+      const { user } = await apiLogin(email, password);
+      setUser(user);
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed");
+    } finally {
+      setIsLoading(false);
     }
-    navigate({ to: "/dashboard" });
   };
 
   return (
@@ -124,6 +128,7 @@ export function SignInPage() {
           </div>
 
           <Button
+            data-testid="signin-submit"
             tone="ink"
             size="lg"
             type="submit"

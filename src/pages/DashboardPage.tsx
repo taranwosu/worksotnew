@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
@@ -46,9 +47,19 @@ export function DashboardPage() {
     );
   }
 
+  // Redirect unauthenticated users in an effect so we don't setState during render.
+  useEffect(() => {
+    if (!isPending && !session) {
+      navigate({ to: "/signin" });
+    }
+  }, [isPending, session, navigate]);
+
   if (!session) {
-    navigate({ to: "/signin" });
-    return null;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
+      </div>
+    );
   }
 
   const hasExpertProfile = expertProfiles && expertProfiles.length > 0;

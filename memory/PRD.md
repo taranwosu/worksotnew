@@ -24,7 +24,10 @@ Premium curated marketplace for senior project-based work (accountants, consulta
 - 25 seeded experts across 6 categories with randomuser.me portraits
 - Experts page, Expert detail page, Home featured, For experts marquee — all on live API
 - AuthProvider context replaces the old Better Auth + Convex stack
+- Signin → /dashboard redirect works (setUser fires before navigate, DashboardPage guards redirect via useEffect)
+- User avatar menu in nav with Sign out (data-testid: user-menu-trigger, user-menu-signout)
 - Supervisor-compatible `/app/frontend` wrapper so both services run under supervisor
+- Backend pytest suite at `/app/backend/tests/backend_test.py` — 14/14 passing
 
 ### 🚧 Not yet built (in order)
 **P0 (next)**
