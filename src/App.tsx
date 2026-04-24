@@ -20,6 +20,9 @@ import { SignUpPage } from "./pages/SignUpPage";
 import { ExpertOnboardingPage } from "./pages/ExpertOnboardingPage";
 import { PostRequestPage } from "./pages/PostRequestPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { MessagesPage } from "./pages/MessagesPage";
+import { ProjectWorkspacePage } from "./pages/ProjectWorkspacePage";
+import { ContractPage } from "./pages/ContractPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -101,6 +104,32 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 });
 
+const messagesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/messages",
+  component: MessagesPage,
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { id?: string; proposal?: string } => {
+    const out: { id?: string; proposal?: string } = {};
+    if (typeof search.id === "string") out.id = search.id;
+    if (typeof search.proposal === "string") out.proposal = search.proposal;
+    return out;
+  },
+});
+
+const projectWorkspaceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workspace/$proposalId",
+  component: ProjectWorkspacePage,
+});
+
+const contractRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contracts/$contractId",
+  component: ContractPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   expertsRoute,
@@ -114,6 +143,9 @@ const routeTree = rootRoute.addChildren([
   expertOnboardingRoute,
   postRequestRoute,
   dashboardRoute,
+  messagesRoute,
+  projectWorkspaceRoute,
+  contractRoute,
 ]);
 
 const router = createRouter({

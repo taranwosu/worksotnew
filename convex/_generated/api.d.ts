@@ -9,9 +9,15 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as contracts from "../contracts.js";
+import type * as files from "../files.js";
 import type * as http from "../http.js";
+import type * as messages from "../messages.js";
+import type * as milestones from "../milestones.js";
 import type * as mutations from "../mutations.js";
+import type * as portfolio from "../portfolio.js";
 import type * as queries from "../queries.js";
+import type * as reviews from "../reviews.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +27,15 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  contracts: typeof contracts;
+  files: typeof files;
   http: typeof http;
+  messages: typeof messages;
+  milestones: typeof milestones;
   mutations: typeof mutations;
+  portfolio: typeof portfolio;
   queries: typeof queries;
+  reviews: typeof reviews;
 }>;
 
 /**

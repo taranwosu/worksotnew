@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, ArrowRight, Check, Loader2, Compass, Plus, X, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Compass, Plus, X, Save, Sparkles, Trash2 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
+import { FileUpload, type UploadedFileMeta } from "@/components/FileUpload";
 
 const CATEGORIES = [
   { id: "accounting", label: "Accounting & Finance", icon: "💼" },
@@ -41,6 +43,7 @@ export function ExpertOnboardingPage() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
   const createProfile = useMutation(api.mutations.createExpertProfile);
+  const deleteStorageFile = useMutation(api.files.deleteStorageFile);
   const existing = useQuery(api.queries.listExpertProfiles, session ? {} : "skip");
 
   const [step, setStep] = useState(1);
@@ -48,6 +51,12 @@ export function ExpertOnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
   const hasLoadedDraft = useRef(false);
+  const [avatarStorageId, setAvatarStorageId] = useState<Id<"_storage"> | null>(null);
+  const avatarUrlQuery = useQuery(
+    api.files.getFileUrl,
+    avatarStorageId ? { storageId: avatarStorageId } : "skip"
+  );
+  const avatarPreviewUrl = avatarUrlQuery ?? null;
 
   // Form state
   const [fullName, setFullName] = useState("");
@@ -139,7 +148,7 @@ export function ExpertOnboardingPage() {
   if (isPending) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-40" />
       </div>
     );
   }
@@ -192,7 +201,8 @@ export function ExpertOnboardingPage() {
         yearsExperience,
         availability,
         remoteOnly,
-        avatarUrl: session.user?.image ?? undefined,
+        avatarUrl: avatarStorageId ? undefined : session.user?.image ?? undefined,
+        avatarStorageId: avatarStorageId ?? undefined,
         linkedinUrl: linkedinUrl || undefined,
         websiteUrl: websiteUrl || undefined,
         certifications,
@@ -220,17 +230,17 @@ export function ExpertOnboardingPage() {
   const progress = ((step - 1) / 4) * 100 + (step === 4 ? 25 : 0);
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-4 py-12">
+    <div className="min-h-[calc(100vh-4rem)] bg-cream px-4 py-12">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink shadow-sm">
               <Compass className="h-5 w-5 text-white" strokeWidth={2.25} />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">Set up your expert profile</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-ink">Set up your expert profile</h1>
           </div>
           {draftSaved && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-moss">
               <Save className="h-3.5 w-3.5" />
               Draft saved
             </div>
@@ -240,12 +250,12 @@ export function ExpertOnboardingPage() {
         {/* Progress bar */}
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between text-xs font-medium">
-            <span className="text-slate-700">Step {step} of 4 · {STEP_TITLES[step - 1]}</span>
-            <span className="text-slate-500">{Math.round(progress)}% complete</span>
+            <span className="text-ink">Step {step} of 4 · {STEP_TITLES[step - 1]}</span>
+            <span className="text-ink-60">{Math.round(progress)}% complete</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-1.5 overflow-hidden rounded-full bg-ink-10">
             <div
-              className="h-full bg-gradient-to-r from-slate-700 to-slate-900 transition-all duration-500 ease-out"
+              className="h-full bg-ink transition-all duration-500 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -261,20 +271,20 @@ export function ExpertOnboardingPage() {
                 disabled={n > step}
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-all ${
                   step >= n
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-200 text-slate-500"
+                    ? "bg-ink text-white"
+                    : "bg-ink-10 text-ink-60"
                 } ${n < step ? "cursor-pointer hover:scale-110" : ""}`}
               >
                 {step > n ? <Check className="h-4 w-4" /> : n}
               </button>
-              {n < 4 && <div className={`h-0.5 w-12 transition-colors ${step > n ? "bg-slate-900" : "bg-slate-200"}`} />}
+              {n < 4 && <div className={`h-0.5 w-12 transition-colors ${step > n ? "bg-ink" : "bg-ink-10"}`} />}
             </div>
           ))}
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="rounded-lg border border-ink-12 bg-white p-8 shadow-sm">
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <div className="mb-4 rounded-lg border border-rust/40 bg-rust/10 px-4 py-3 text-sm text-rust">
               {error}
             </div>
           )}
@@ -283,9 +293,63 @@ export function ExpertOnboardingPage() {
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Tell us about you</h2>
-                <p className="mt-1 text-sm text-slate-600">Start with the basics — your name, headline and a short bio.</p>
+                <h2 className="text-lg font-semibold text-ink">Tell us about you</h2>
+                <p className="mt-1 text-sm text-ink-60">Start with the basics — your name, headline and a short bio.</p>
               </div>
+              <FormField label="Profile photo" hint="PNG or JPG, up to 5 MB. Profiles with photos get 3× more invites.">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-ink-12 bg-cream-3">
+                    {avatarPreviewUrl ? (
+                      <img
+                        src={avatarPreviewUrl}
+                        alt="Avatar preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : session.user?.image ? (
+                      <img
+                        src={session.user.image}
+                        alt="Current photo"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xl font-bold text-ink-60">
+                        {(fullName || session.user?.email || "?").charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <FileUpload
+                      compact
+                      accept="image/png,image/jpeg,image/webp"
+                      maxSizeMB={5}
+                      label={avatarStorageId ? "Replace photo" : "Upload photo"}
+                      onUploaded={async (meta: UploadedFileMeta) => {
+                        if (avatarStorageId) {
+                          try {
+                            await deleteStorageFile({ storageId: avatarStorageId });
+                          } catch {}
+                        }
+                        setAvatarStorageId(meta.storageId);
+                      }}
+                    />
+                    {avatarStorageId && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await deleteStorageFile({ storageId: avatarStorageId });
+                          } catch {}
+                          setAvatarStorageId(null);
+                        }}
+                        className="ml-2 inline-flex items-center gap-1 rounded-lg border border-ink-20 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-paper"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </FormField>
               <FormField label="Full name">
                 <input
                   type="text"
@@ -322,8 +386,8 @@ export function ExpertOnboardingPage() {
           {step === 2 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Your expertise</h2>
-                <p className="mt-1 text-sm text-slate-600">Help clients find you by selecting your specialty.</p>
+                <h2 className="text-lg font-semibold text-ink">Your expertise</h2>
+                <p className="mt-1 text-sm text-ink-60">Help clients find you by selecting your specialty.</p>
               </div>
               <FormField label="Primary category">
                 <div className="grid grid-cols-2 gap-2">
@@ -334,8 +398,8 @@ export function ExpertOnboardingPage() {
                       onClick={() => setCategory(cat.id)}
                       className={`flex items-center gap-2 rounded-lg border-2 p-3 text-left text-sm font-medium transition-all ${
                         category === cat.id
-                          ? "border-slate-900 bg-slate-50 text-slate-900"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                          ? "border-ink bg-paper text-ink"
+                          : "border-ink-12 bg-white text-ink hover:border-ink-20"
                       }`}
                     >
                       <span className="text-base">{cat.icon}</span>
@@ -354,14 +418,14 @@ export function ExpertOnboardingPage() {
                     placeholder="e.g. Financial Modeling"
                     className="input flex-1"
                   />
-                  <button type="button" onClick={addSkill} className="rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
+                  <button type="button" onClick={addSkill} className="rounded-lg bg-ink px-4 text-sm font-semibold text-white hover:bg-ink-2">
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
                 {specialties.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {specialties.map((s) => (
-                      <span key={s} className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                      <span key={s} className="flex items-center gap-1.5 rounded-full bg-cream-2 px-3 py-1 text-xs font-medium text-ink">
                         {s}
                         <button type="button" onClick={() => setSpecialties(specialties.filter((x) => x !== s))}>
                           <X className="h-3 w-3" />
@@ -388,13 +452,13 @@ export function ExpertOnboardingPage() {
           {step === 3 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Rates & availability</h2>
-                <p className="mt-1 text-sm text-slate-600">Set your pricing and how clients can work with you.</p>
+                <h2 className="text-lg font-semibold text-ink">Rates & availability</h2>
+                <p className="mt-1 text-sm text-ink-60">Set your pricing and how clients can work with you.</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Hourly rate (USD)">
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-ink-40">$</span>
                     <input
                       type="number"
                       min={10}
@@ -433,14 +497,14 @@ export function ExpertOnboardingPage() {
                   />
                 </FormField>
               </div>
-              <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <label className="flex items-center gap-3 rounded-lg border border-ink-12 bg-paper p-3 text-sm">
                 <input
                   type="checkbox"
                   checked={remoteOnly}
                   onChange={(e) => setRemoteOnly(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300"
+                  className="h-4 w-4 rounded border-ink-20"
                 />
-                <span className="font-medium text-slate-700">Remote work only</span>
+                <span className="font-medium text-ink">Remote work only</span>
               </label>
             </div>
           )}
@@ -449,8 +513,8 @@ export function ExpertOnboardingPage() {
           {step === 4 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Credentials (optional)</h2>
-                <p className="mt-1 text-sm text-slate-600">Add certifications and links to boost your profile.</p>
+                <h2 className="text-lg font-semibold text-ink">Credentials (optional)</h2>
+                <p className="mt-1 text-sm text-ink-60">Add certifications and links to boost your profile.</p>
               </div>
               <FormField label="Certifications">
                 <div className="flex gap-2">
@@ -462,14 +526,14 @@ export function ExpertOnboardingPage() {
                     placeholder="e.g. CPA, PMP, AWS Certified"
                     className="input flex-1"
                   />
-                  <button type="button" onClick={addCert} className="rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
+                  <button type="button" onClick={addCert} className="rounded-lg bg-ink px-4 text-sm font-semibold text-white hover:bg-ink-2">
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
                 {certifications.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {certifications.map((c) => (
-                      <span key={c} className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800">
+                      <span key={c} className="flex items-center gap-1.5 rounded-full bg-sun/15 px-3 py-1 text-xs font-medium text-ink">
                         {c}
                         <button type="button" onClick={() => setCertifications(certifications.filter((x) => x !== c))}>
                           <X className="h-3 w-3" />
@@ -489,14 +553,14 @@ export function ExpertOnboardingPage() {
                     placeholder="e.g. Spanish"
                     className="input flex-1"
                   />
-                  <button type="button" onClick={addLang} className="rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
+                  <button type="button" onClick={addLang} className="rounded-lg bg-ink px-4 text-sm font-semibold text-white hover:bg-ink-2">
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
                 {languages.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {languages.map((l) => (
-                      <span key={l} className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                      <span key={l} className="flex items-center gap-1.5 rounded-full bg-cream-2 px-3 py-1 text-xs font-medium text-ink">
                         {l}
                         {l !== "English" && (
                           <button type="button" onClick={() => setLanguages(languages.filter((x) => x !== l))}>
@@ -528,9 +592,9 @@ export function ExpertOnboardingPage() {
               </FormField>
 
               {/* Review summary */}
-              <div className="mt-6 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-blue-50/30 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <Sparkles className="h-4 w-4 text-blue-600" />
+              <div className="mt-6 rounded-lg border border-ink-12 bg-cream-2 p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink">
+                  <Sparkles className="h-4 w-4 text-ink" />
                   Profile summary
                 </div>
                 <dl className="space-y-1.5 text-xs">
@@ -546,12 +610,12 @@ export function ExpertOnboardingPage() {
           )}
 
           {/* Nav buttons */}
-          <div className="mt-8 flex items-center justify-between border-t border-slate-200 pt-6">
+          <div className="mt-8 flex items-center justify-between border-t border-ink-12 pt-6">
             <button
               type="button"
               onClick={() => setStep(Math.max(1, step - 1))}
               disabled={step === 1}
-              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-ink hover:bg-cream-2 disabled:opacity-40"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
@@ -561,7 +625,7 @@ export function ExpertOnboardingPage() {
                 type="button"
                 onClick={() => setStep(step + 1)}
                 disabled={(step === 1 && !canNext1) || (step === 2 && !canNext2) || (step === 3 && !canNext3)}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-40 disabled:hover:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg bg-ink px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-ink-2 hover:shadow-md disabled:opacity-40 disabled:hover:shadow-sm"
               >
                 Continue
                 <ArrowRight className="h-4 w-4" />
@@ -571,7 +635,7 @@ export function ExpertOnboardingPage() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit || saving}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg bg-ink px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-ink-2 hover:shadow-md disabled:opacity-40"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {saving ? "Creating..." : "Publish profile"}
@@ -580,7 +644,7 @@ export function ExpertOnboardingPage() {
           </div>
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
+        <p className="mt-6 text-center text-xs text-ink-60">
           Your progress is automatically saved as you type. You can close this page and return to continue later.
         </p>
       </div>
@@ -591,9 +655,9 @@ export function ExpertOnboardingPage() {
 function FormField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1.5 block text-sm font-medium text-ink">{label}</label>
       {children}
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-ink-60">{hint}</p>}
     </div>
   );
 }
@@ -601,8 +665,8 @@ function FormField({ label, hint, children }: { label: string; hint?: string; ch
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="max-w-[60%] truncate font-medium text-slate-900">{value || "—"}</dd>
+      <dt className="text-ink-60">{label}</dt>
+      <dd className="max-w-[60%] truncate font-medium text-ink">{value || "—"}</dd>
     </div>
   );
 }
