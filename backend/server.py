@@ -750,7 +750,17 @@ async def payment_status(session_id: str, request: Request, user: User = Depends
         raise HTTPException(status_code=403, detail="Not your session")
     host_url = str(request.base_url)
     stripe = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{host_url}api/webhook/stripe")
-    st = await stripe.get_checkout_status(session_id)
+    try:
+        st = await stripe.get_checkout_status(session_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("stripe status lookup failed for %s: %s", session_id, e)
+        return {
+            "status": tx.get("status", "pending"),
+            "payment_status": tx.get("payment_status", "pending"),
+            "amount_total": tx.get("amount_total") or int(float(tx["amount"]) * 100),
+            "currency": tx.get("currency", "usd"),
+            "cached": True,
+        }
     # Idempotent update
     if tx["payment_status"] != "paid" and st.payment_status == "paid":
         await db.payment_transactions.update_one(
@@ -761,7 +771,6 @@ async def payment_status(session_id: str, request: Request, user: User = Depends
                 "updated_at": _now(),
             }},
         )
-        # Mark milestone as funded
         await db.milestones.update_one(
             {"id": tx["milestone_id"], "status": "pending"},
             {"$set": {"status": "funded", "funded_at": _now()}},
