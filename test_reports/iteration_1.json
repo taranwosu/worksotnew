@@ -1,0 +1,44 @@
+{
+  "summary": "Backend: 14/14 pytest cases pass for /api/health, /api/experts (list, category, q, sort, categories, detail+404) and /api/auth (register, duplicate, login ok/401, /me with+without bearer, logout invalidates). Frontend /experts: 25 cards render, Design & UX filter narrows to 5, detail page /experts/{id} loads, sort/search work. Signup navigates to /dashboard successfully. Signin succeeds at backend level (cookie set, user avatar visible in nav) but URL stays on /signin — DashboardPage appears to redirect back on first render before useSession has the fresh user (React warning 'Cannot update a component (Transitioner) while rendering DashboardPage'). Sign-out UI is not reachable from the avatar in the nav.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Layout nav avatar (signed-in user menu)", "issue": "Clicking the user avatar ('A Alice'/'T Test' chip) does not open a dropdown. There is no visible Sign out control anywhere in the UI, so users cannot log out from the browser. Playwright waited 30s for any 'Sign out' text to become visible — none found.", "selector": "header button (avatar)", "priority": "HIGH"},
+      {"component": "SignInPage → Dashboard redirect", "issue": "After a successful POST /api/auth/login (cookie set, /api/auth/me returns user, avatar renders in nav), navigate({to:'/dashboard'}) fires but DashboardPage immediately bounces the user back to /signin. React console warning: 'Cannot update a component (Transitioner) while rendering a different component. DashboardPage … DashboardPage'. Signup works because it hits dashboard after the auth store is already hydrated; signin has a race where DashboardPage runs a redirect during render before useSession reflects the freshly-issued session.", "selector": "/dashboard", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Signin → Dashboard", "issue": "Session is actually established (cookie present, avatar + name render in header) but the user ends up back on /signin, breaking the expected 'navigate to /dashboard on success' requirement.", "affected_selectors": ["/signin", "/dashboard"]}
+    ],
+    "design_issues": [
+      {"screen": "Global (legacy Convex)", "issues": ["Console emits '[CONVEX FATAL ERROR] Couldn\\'t parse deployment name placeholder' on /signup and /dashboard because VITE_CONVEX_URL is still the placeholder. Out of scope per problem statement but should be cleaned up in the next iteration to stop noise and the Transitioner-in-render warning likely stems from a Convex-wired page component."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix signin → /dashboard navigation so the user actually lands on /dashboard (likely: make DashboardPage wait for useSession loading flag instead of redirecting when user is momentarily null, or rely on AuthProvider to hydrate before navigate fires).",
+    "Wire the avatar/user chip in Layout to a dropdown (or add a visible Sign out button) that calls signOutUser and clears the session. Currently there is no way for an end user to log out from the UI.",
+    "Clean up the legacy Convex initialization path so the '[CONVEX FATAL ERROR] Couldn\\'t parse deployment name placeholder' stops appearing on pages that no longer need it (at least gate ConvexProvider behind a real URL env)."
+  ],
+  "critical_code_review_comments": [
+    "src/pages/ExpertsPage.tsx still depends on the legacy Expert shape (e.title, e.skills, e.responseTime); the mapping is handled in src/lib/api.ts, but keep an eye that both shapes stay in sync — a refactor to one canonical type is recommended.",
+    "Layout.tsx: missing visible sign-out affordance (HIGH). The avatar should be a DropdownMenu trigger with Dashboard/Sign out items, each with data-testid.",
+    "Sign-in flow: DashboardPage gates on `user === null` but that value is transiently null right after login. Gate on `isLoading === false && user === null` instead.",
+    "Add data-testid attributes on: signin-submit, signup-submit, user-menu-trigger, user-menu-signout, expert-card, category-pill-{id}, sort-select. Most are missing today, making E2E tests brittle."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "80%"},
+  "test_credentials": "alice@worksoy.com / Passw0rd! (seeded via backend_test.py test_login_seeded_user_or_register)",
+  "seed_data_creation": "Seed experts run in previous iteration — 25 experts confirmed present via GET /api/experts. Test users created with prefix 'test_<random>@worksoy.com' are left behind (no cleanup endpoint available).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/backend_test.py covers health, experts filtering/sorting/detail, and full auth lifecycle — run with `pytest /app/backend/tests/backend_test.py -v`. Frontend E2E: re-test /signin → /dashboard redirect after fix, and verify the user menu opens with a Sign out item. The avatar is rendered (top-right), confirmed visible in screenshots, but is not a menu trigger yet.",
+  "rca_of_the_issue": "Signin-redirect bug RCA: when SignInPage calls navigate({to:'/dashboard'}) right after await signInWithEmail, AuthProvider must have already updated useSession to the authenticated user. Evidence: (1) session_token cookie is set and backend /api/auth/me returns 200, (2) the nav avatar renders the correct user name (e.g., 'A Alice'), (3) URL ends back at /signin and React logs a setState-in-render warning originating from DashboardPage. This strongly indicates DashboardPage performs a synchronous redirect to /signin while user is still falsy, causing the transitioner to update mid-render. Fix: gate DashboardPage's redirect behind a loading flag (only redirect when loading===false && user===null), or have AuthProvider expose a hydrated promise that SignInPage awaits before navigating."
+}

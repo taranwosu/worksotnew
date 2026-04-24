@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   Star,
@@ -12,7 +13,8 @@ import {
   ShieldCheck,
   Quote,
 } from "lucide-react";
-import { experts } from "@/data/experts";
+import type { Expert } from "@/data/experts";
+import { fetchExpert } from "@/lib/api";
 import {
   Container,
   Eyebrow,
@@ -47,7 +49,26 @@ const mockReviews = [
 
 export function ExpertDetailPage() {
   const { expertId } = useParams({ strict: false }) as { expertId: string };
-  const expert = experts.find((e) => e.id === expertId);
+  const [expert, setExpert] = useState<Expert | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchExpert(expertId)
+      .then(setExpert)
+      .catch(() => setExpert(null))
+      .finally(() => setLoading(false));
+  }, [expertId]);
+
+  if (loading) {
+    return (
+      <Container className="py-24 text-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
+          Loading file…
+        </p>
+      </Container>
+    );
+  }
 
   if (!expert) {
     return (

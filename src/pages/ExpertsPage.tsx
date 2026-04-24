@@ -1,6 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, LayoutGrid, Rows3, X } from "lucide-react";
-import { experts, categories } from "@/data/experts";
+import type { Expert } from "@/data/experts";
+import { CATEGORY_IDS, CATEGORY_LABELS } from "@/data/experts";
+import { fetchExperts } from "@/lib/api";
 import { ExpertCard } from "@/components/ExpertCard";
 import {
   Container,
@@ -19,9 +21,30 @@ export function ExpertsPage() {
   const [sortBy, setSortBy] = useState<SortKey>("rating");
   const [view, setView] = useState<View>("grid");
   const [availableOnly, setAvailableOnly] = useState(false);
+  const [allExperts, setAllExperts] = useState<Expert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchExperts()
+      .then((list) => setAllExperts(list))
+      .catch(() => setAllExperts([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const categories = useMemo(() => {
+    return CATEGORY_IDS.map((id) => ({
+      id,
+      label: CATEGORY_LABELS[id],
+      count:
+        id === "all"
+          ? allExperts.length
+          : allExperts.filter((e) => e.category === id).length,
+    }));
+  }, [allExperts]);
 
   const filtered = useMemo(() => {
-    let list = experts.filter((e) => {
+    let list = allExperts.filter((e) => {
       const matchCat =
         activeCategory === "all" || e.category === activeCategory;
       const q = query.toLowerCase();
@@ -42,7 +65,7 @@ export function ExpertsPage() {
       return ta - tb;
     });
     return list;
-  }, [query, activeCategory, sortBy, availableOnly]);
+  }, [allExperts, query, activeCategory, sortBy, availableOnly]);
 
   const clearFilters = () => {
     setQuery("");
@@ -61,7 +84,7 @@ export function ExpertsPage() {
               The directory
             </Eyebrow>
             <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
-              {experts.length} on file · updated weekly
+              {loading ? "loading…" : `${allExperts.length} on file · updated weekly`}
             </span>
           </div>
           <div className="grid grid-cols-1 gap-8 pt-10 md:grid-cols-12 md:pt-14">
@@ -200,7 +223,7 @@ export function ExpertsPage() {
               <span className="text-ink tabular">
                 {String(filtered.length).padStart(2, "0")}
               </span>{" "}
-              of {String(experts.length).padStart(2, "0")}
+              of {String(allExperts.length).padStart(2, "0")}
             </p>
             {hasFilters && (
               <button

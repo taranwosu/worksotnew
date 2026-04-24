@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Wallet,
   ShieldCheck,
@@ -9,7 +10,8 @@ import {
   PhoneCall,
   CheckCircle2,
 } from "lucide-react";
-import { experts } from "@/data/experts";
+import type { Expert } from "@/data/experts";
+import { fetchExperts } from "@/lib/api";
 import {
   Container,
   Eyebrow,
@@ -86,6 +88,11 @@ const stats = [
 ];
 
 export function ForExpertsPage() {
+  const [experts, setExperts] = useState<Expert[]>([]);
+  useEffect(() => {
+    fetchExperts().then(setExperts).catch(() => setExperts([]));
+  }, []);
+
   return (
     <div className="bg-cream">
       {/* ───────────── HERO — dark slab ───────────── */}

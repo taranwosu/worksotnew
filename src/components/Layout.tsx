@@ -10,8 +10,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
-import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 
@@ -24,16 +22,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const routerState = useRouterState();
   const { data: session, isPending } = useSession();
 
-  const expertProfiles = useQuery(
-    api.queries.listExpertProfiles,
-    session ? {} : "skip",
-  );
-  const hasExpertProfile = (expertProfiles?.length ?? 0) > 0;
-  const unreadSummary = useQuery(
-    api.messages.getUnreadSummary,
-    session ? {} : "skip",
-  );
-  const unreadCount = unreadSummary?.unreadConversations ?? 0;
+  const hasExpertProfile = session?.user?.role === "expert";
+  const unreadCount = 0;
 
   useEffect(() => {
     setMobileOpen(false);

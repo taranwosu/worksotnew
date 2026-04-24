@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRight,
@@ -9,7 +10,8 @@ import {
   Timer,
   Layers,
 } from "lucide-react";
-import { experts } from "@/data/experts";
+import type { Expert } from "@/data/experts";
+import { fetchExperts } from "@/lib/api";
 import { ExpertCard } from "@/components/ExpertCard";
 import {
   Container,
@@ -129,8 +131,22 @@ const guarantees = [
 ];
 
 export function HomePage() {
-  const featured = experts.slice(0, 3);
-  const avg = (experts.reduce((a, e) => a + e.rating, 0) / experts.length).toFixed(2);
+  const [featured, setFeatured] = useState<Expert[]>([]);
+  const [avg, setAvg] = useState("4.96");
+
+  useEffect(() => {
+    fetchExperts({ sort: "top" })
+      .then((list) => {
+        setFeatured(list.slice(0, 3));
+        if (list.length > 0) {
+          const a = list.reduce((s, e) => s + e.rating, 0) / list.length;
+          setAvg(a.toFixed(2));
+        }
+      })
+      .catch(() => {
+        /* gracefully leave defaults */
+      });
+  }, []);
 
   return (
     <div className="bg-cream">
