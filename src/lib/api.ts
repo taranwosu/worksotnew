@@ -293,12 +293,16 @@ export type Message = {
   sender_name: string;
   body: string;
   created_at: string;
+  file_id?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_content_type?: string | null;
 };
 
 export async function listConversations() { return req<ConversationSummary[]>("/api/conversations/mine"); }
 export async function listMessages(convId: string) { return req<Message[]>(`/api/conversations/${convId}/messages`); }
-export async function sendMessage(convId: string, body: string) {
-  return req<Message>(`/api/conversations/${convId}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+export async function sendMessage(convId: string, body: string, file_id?: string) {
+  return req<Message>(`/api/conversations/${convId}/messages`, { method: "POST", body: JSON.stringify({ body, file_id }) });
 }
 
 // ================= Admin =================
@@ -322,3 +326,114 @@ export async function adminVerifyExpert(id: string) { return req<{ ok: boolean }
 export async function adminUnverifyExpert(id: string) { return req<{ ok: boolean }>(`/api/admin/experts/${id}/unverify`, { method: "POST" }); }
 export async function adminTogglePublish(id: string) { return req<{ ok: boolean }>(`/api/admin/experts/${id}/publish`, { method: "POST" }); }
 export async function adminListBriefs() { return req<Brief[]>("/api/admin/briefs"); }
+
+// ================= Notifications =================
+export type Notification = {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  href?: string | null;
+  entity_id?: string | null;
+  read: boolean;
+  created_at: string;
+};
+
+export async function listNotifications() { return req<Notification[]>("/api/notifications"); }
+export async function unreadCount() { return req<{ count: number }>("/api/notifications/unread-count"); }
+export async function markNotificationRead(id: string) { return req<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: "POST" }); }
+export async function markAllNotificationsRead() { return req<{ ok: boolean }>("/api/notifications/read-all", { method: "POST" }); }
+
+// ================= Files =================
+export type FileMeta = {
+  id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  owner_user_id: string;
+  conversation_id?: string | null;
+  contract_id?: string | null;
+  milestone_id?: string | null;
+  created_at: string;
+};
+
+export async function uploadFile(file: File, scope: { conversation_id?: string; contract_id?: string; milestone_id?: string }): Promise<FileMeta> {
+  const form = new FormData();
+  form.append("file", file);
+  if (scope.conversation_id) form.append("conversation_id", scope.conversation_id);
+  if (scope.contract_id) form.append("contract_id", scope.contract_id);
+  if (scope.milestone_id) form.append("milestone_id", scope.milestone_id);
+  const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/files/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail ?? `Upload failed (${res.status})`);
+  }
+  return res.json() as Promise<FileMeta>;
+}
+
+export function fileDownloadUrl(id: string) {
+  return `${import.meta.env.VITE_BACKEND_URL}/api/files/${id}`;
+}
+
+// ================= Reviews =================
+export type Review = {
+  id: string;
+  contract_id: string;
+  reviewer_user_id: string;
+  reviewer_name: string;
+  reviewee_user_id: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+};
+
+export async function leaveReview(contractId: string, rating: number, comment: string) {
+  return req<Review>(`/api/contracts/${contractId}/reviews`, { method: "POST", body: JSON.stringify({ rating, comment }) });
+}
+export async function getContractReviews(contractId: string) {
+  return req<Review[]>(`/api/contracts/${contractId}/reviews`);
+}
+export async function getExpertReviews(expertId: string) {
+  return req<Review[]>(`/api/experts/${expertId}/reviews`);
+}
+
+// ================= Disputes =================
+export type Dispute = {
+  id: string;
+  milestone_id: string;
+  contract_id: string;
+  opened_by_user_id: string;
+  opened_by_name: string;
+  reason: string;
+  status: string;
+  resolution?: string | null;
+  resolution_action?: string | null;
+  resolution_note?: string | null;
+  resolved_at?: string | null;
+  resolved_by_admin_id?: string | null;
+  created_at: string;
+};
+
+export async function fileDispute(milestoneId: string, reason: string) {
+  return req<Dispute>(`/api/milestones/${milestoneId}/dispute`, { method: "POST", body: JSON.stringify({ reason }) });
+}
+export async function adminListDisputes(status?: string) {
+  const qs = status ? `?status=${status}` : "";
+  return req<Dispute[]>(`/api/admin/disputes${qs}`);
+}
+export async function adminResolveDispute(id: string, action: "release" | "refund", note?: string) {
+  return req<Dispute>(`/api/admin/disputes/${id}/resolve`, { method: "POST", body: JSON.stringify({ action, note }) });
+}
+
+// Extend Message type with optional file fields
+export type MessageAttach = {
+  file_id?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  file_content_type?: string | null;
+};

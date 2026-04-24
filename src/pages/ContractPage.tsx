@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearch } from "@tanstack/react-router";
-import { Loader2, CheckCircle2, Circle, ArrowUpRight, CircleDollarSign } from "lucide-react";
+import { Loader2, CheckCircle2, ArrowUpRight, CircleDollarSign, Star, AlertTriangle } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import {
   getContract,
@@ -8,10 +8,14 @@ import {
   getPaymentStatus,
   submitMilestone,
   releaseMilestone,
+  fileDispute,
+  getContractReviews,
+  leaveReview,
   type Contract,
   type Milestone,
+  type Review,
 } from "@/lib/api";
-import { Container, Eyebrow, Button, Tag } from "@/components/primitives";
+import { Container, Eyebrow, Button, Tag, FieldTextarea, FieldLabel } from "@/components/primitives";
 
 export function ContractPage() {
   const { contractId } = useParams({ strict: false }) as { contractId: string };
@@ -23,17 +27,26 @@ export function ContractPage() {
   const [loading, setLoading] = useState(true);
   const [checkoutFor, setCheckoutFor] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [disputeFor, setDisputeFor] = useState<string | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
-    getContract(contractId)
-      .then(({ contract, milestones }) => {
+    Promise.all([
+      getContract(contractId),
+      getContractReviews(contractId).catch(() => [] as Review[]),
+    ])
+      .then(([{ contract, milestones }, revs]) => {
         setContract(contract);
         setMilestones(milestones);
+        setReviews(revs);
       })
-      .catch(() => {
-        setContract(null);
-      })
+      .catch(() => setContract(null))
       .finally(() => setLoading(false));
   }, [contractId]);
 
@@ -94,6 +107,37 @@ export function ContractPage() {
   };
   const handleRelease = async (id: string) => {
     try { await releaseMilestone(id); load(); } catch (e) { alert(String(e)); }
+  };
+
+  const handleFileDispute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!disputeFor) return;
+    setDisputeSubmitting(true);
+    try {
+      await fileDispute(disputeFor, disputeReason);
+      setDisputeFor(null);
+      setDisputeReason("");
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to file dispute");
+    } finally {
+      setDisputeSubmitting(false);
+    }
+  };
+
+  const myReview = reviews.find((r) => r.reviewer_user_id === session?.user._id);
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReviewSubmitting(true);
+    try {
+      await leaveReview(contractId, reviewRating, reviewComment);
+      setReviewComment("");
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to submit review");
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
 
   return (
@@ -180,7 +224,44 @@ export function ContractPage() {
                       <CheckCircle2 className="h-4 w-4 text-sun-2" /> Paid to expert
                     </span>
                   )}
+                  {m.status === "disputed" && (
+                    <span className="inline-flex items-center gap-1.5 text-[12.5px] text-rust">
+                      <AlertTriangle className="h-4 w-4" /> Under dispute — admin is reviewing
+                    </span>
+                  )}
+                  {(isClient || isExpert) && (m.status === "funded" || m.status === "submitted") && (
+                    <Button
+                      data-testid={`dispute-${m.id}`}
+                      tone="outline"
+                      size="sm"
+                      onClick={() => setDisputeFor(m.id)}
+                    >
+                      File dispute
+                    </Button>
+                  )}
                 </div>
+                {disputeFor === m.id && (
+                  <form onSubmit={handleFileDispute} className="mt-4 rounded border border-rust/30 bg-rust/5 p-4">
+                    <FieldLabel htmlFor={`reason-${m.id}`} className="text-rust">Reason for dispute</FieldLabel>
+                    <FieldTextarea
+                      id={`reason-${m.id}`}
+                      required
+                      minLength={10}
+                      rows={3}
+                      value={disputeReason}
+                      onChange={(e) => setDisputeReason(e.target.value)}
+                      placeholder="Describe the issue in detail — what was expected, what was delivered, and the remedy you're asking for."
+                    />
+                    <div className="mt-3 flex gap-2">
+                      <Button data-testid="dispute-submit" tone="ink" size="sm" type="submit" disabled={disputeSubmitting}>
+                        {disputeSubmitting ? "Filing…" : "Submit dispute"}
+                      </Button>
+                      <Button tone="outline" size="sm" type="button" onClick={() => setDisputeFor(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </div>
             );
           })}
@@ -191,6 +272,60 @@ export function ContractPage() {
             Open message thread <ArrowUpRight className="h-3.5 w-3.5" />
           </button>
         </div>
+
+        {contract.status === "completed" && (
+          <section className="mt-12">
+            <h2 className="border-b border-ink-12 pb-3 font-display text-[22px] font-medium text-ink">Reviews</h2>
+            {reviews.length > 0 && (
+              <div className="mt-6 space-y-4">
+                {reviews.map((r) => (
+                  <div key={r.id} className="rounded border border-ink-12 bg-white p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-display text-[15px] font-semibold text-ink">{r.reviewer_name}</p>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star key={i} className={`h-4 w-4 ${i < r.rating ? "fill-sun text-sun" : "text-ink-20"}`} />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[13.5px] leading-relaxed text-ink-60">{r.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!myReview && (
+              <form onSubmit={handleSubmitReview} className="mt-6 rounded border border-ink-12 bg-white p-5">
+                <h3 className="font-display text-[16px] font-medium text-ink">Leave your review</h3>
+                <div className="mt-3 flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      data-testid={`star-${n}`}
+                      onClick={() => setReviewRating(n)}
+                      className="p-1"
+                      aria-label={`${n} stars`}
+                    >
+                      <Star className={`h-6 w-6 ${n <= reviewRating ? "fill-sun text-sun" : "text-ink-20"}`} />
+                    </button>
+                  ))}
+                </div>
+                <FieldTextarea
+                  required
+                  minLength={3}
+                  rows={4}
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Share what worked, the outcomes, and what stood out."
+                  className="mt-3"
+                />
+                <Button data-testid="submit-review" tone="ink" size="md" type="submit" disabled={reviewSubmitting} className="mt-3">
+                  {reviewSubmitting ? "Submitting…" : "Publish review"}
+                </Button>
+              </form>
+            )}
+          </section>
+        )}
       </Container>
     </div>
   );

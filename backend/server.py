@@ -24,6 +24,10 @@ from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
     CheckoutSessionRequest,
 )
+from fastapi import UploadFile, File, Form
+from fastapi.responses import FileResponse
+from pathlib import Path as _Path
+import shutil
 
 load_dotenv()
 
@@ -34,6 +38,9 @@ EMERGENT_AUTH_URL = os.environ["EMERGENT_AUTH_URL"]
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 ADMIN_EMAIL = "admin@worksoy.com"
 ADMIN_PASSWORD = "WorkSoy!Admin2026"
+UPLOADS_DIR = _Path(os.environ.get("UPLOADS_DIR", "/app/backend/uploads"))
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
@@ -245,6 +252,7 @@ class Contract(BaseModel):
 
 class MessageIn(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
+    file_id: Optional[str] = None
 
 
 class MessageOut(BaseModel):
@@ -254,6 +262,10 @@ class MessageOut(BaseModel):
     sender_name: str
     body: str
     created_at: datetime
+    file_id: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    file_content_type: Optional[str] = None
 
 
 class ConversationSummary(BaseModel):
@@ -561,6 +573,16 @@ async def submit_proposal(brief_id: str, payload: ProposalIn, user: User = Depen
     }
     await db.proposals.insert_one(doc)
     await db.briefs.update_one({"id": brief_id}, {"$inc": {"proposal_count": 1}})
+    await _notify(
+        brief["user_id"],
+        type="proposal.new",
+        title=f"New proposal from {user.name}",
+        body=f"On \u201c{brief['title']}\u201d · ${payload.proposed_rate}/{payload.rate_type}",
+        href=f"/briefs/{brief_id}",
+        entity_id=pid,
+        email_subject=f"New proposal on {brief['title']}",
+        email_html=f"<p>{user.name} just applied to your brief.</p>",
+    )
     doc.pop("_id", None)
     return Proposal(**doc)
 
@@ -656,6 +678,14 @@ async def accept_proposal(proposal_id: str, user: User = Depends(get_current_use
         "last_at": _now(),
         "read_by": {},
     })
+    await _notify(
+        prop["expert_user_id"],
+        type="proposal.accepted",
+        title="Your proposal was accepted 🎉",
+        body=f"Contract opened for \u201c{brief['title']}\u201d.",
+        href=f"/contracts/{cid}",
+        entity_id=cid,
+    )
     contract_doc.pop("_id", None)
     return Contract(**contract_doc)
 
@@ -669,6 +699,14 @@ async def reject_proposal(proposal_id: str, user: User = Depends(get_current_use
     if not brief or brief["user_id"] != user.user_id:
         raise HTTPException(status_code=403, detail="Only the brief owner may reject")
     await db.proposals.update_one({"id": proposal_id}, {"$set": {"status": "rejected"}})
+    await _notify(
+        prop["expert_user_id"],
+        type="proposal.rejected",
+        title="Proposal not selected",
+        body=f"Your proposal on \u201c{brief['title']}\u201d wasn\u2019t picked this time.",
+        href=f"/briefs/{brief['id']}",
+        entity_id=proposal_id,
+    )
     return {"ok": True}
 
 
@@ -819,6 +857,14 @@ async def submit_milestone(milestone_id: str, user: User = Depends(get_current_u
     if ms["status"] != "funded":
         raise HTTPException(status_code=400, detail="Milestone must be funded before submission")
     await db.milestones.update_one({"id": milestone_id}, {"$set": {"status": "submitted"}})
+    await _notify(
+        contract["client_user_id"],
+        type="milestone.submitted",
+        title="Work submitted for review",
+        body=f"{contract['expert_name']} marked \u201c{ms['title']}\u201d as delivered.",
+        href=f"/contracts/{contract['id']}",
+        entity_id=milestone_id,
+    )
     return {"ok": True}
 
 
@@ -837,6 +883,24 @@ async def release_milestone(milestone_id: str, user: User = Depends(get_current_
     remaining = await db.milestones.count_documents({"contract_id": contract["id"], "status": {"$ne": "released"}})
     if remaining == 0:
         await db.contracts.update_one({"id": contract["id"]}, {"$set": {"status": "completed"}})
+    await _notify(
+        contract["expert_user_id"],
+        type="milestone.released",
+        title="Funds released 💸",
+        body=f"${ms['amount']:,.2f} for \u201c{ms['title']}\u201d is on its way.",
+        href=f"/contracts/{contract['id']}",
+        entity_id=milestone_id,
+    )
+    if remaining == 0:
+        for uid in (contract["client_user_id"], contract["expert_user_id"]):
+            await _notify(
+                uid,
+                type="contract.completed",
+                title="Contract complete — leave a review",
+                body=f"\u201c{contract['brief_title']}\u201d has been fully delivered. Share your experience.",
+                href=f"/contracts/{contract['id']}",
+                entity_id=contract["id"],
+            )
     return {"ok": True}
 
 
@@ -892,6 +956,17 @@ async def send_message(conv_id: str, payload: MessageIn, user: User = Depends(ge
     if not c or user.user_id not in c["participants"]:
         raise HTTPException(status_code=404, detail="Conversation not found")
     mid = f"msg_{uuid.uuid4().hex[:10]}"
+    file_meta: dict = {}
+    if payload.file_id:
+        f = await db.files.find_one({"id": payload.file_id}, {"_id": 0})
+        if not f or f.get("conversation_id") != conv_id:
+            raise HTTPException(status_code=400, detail="Invalid file attachment")
+        file_meta = {
+            "file_id": f["id"],
+            "file_name": f["filename"],
+            "file_size": f["size"],
+            "file_content_type": f["content_type"],
+        }
     doc = {
         "id": mid,
         "conversation_id": conv_id,
@@ -900,12 +975,23 @@ async def send_message(conv_id: str, payload: MessageIn, user: User = Depends(ge
         "body": payload.body,
         "created_at": _now(),
         "read_by": {user.user_id: _now()},
+        **file_meta,
     }
     await db.messages.insert_one(doc)
     await db.conversations.update_one(
         {"id": conv_id},
         {"$set": {"last_body": payload.body, "last_at": _now()}},
     )
+    for uid in c["participants"]:
+        if uid != user.user_id:
+            await _notify(
+                uid,
+                type="message.new",
+                title=f"New message from {user.name}",
+                body=payload.body[:140],
+                href="/messages",
+                entity_id=conv_id,
+            )
     doc.pop("_id", None)
     return MessageOut(**doc)
 
@@ -967,6 +1053,384 @@ async def admin_list_briefs(user: User = Depends(require_admin)):
 
 
 # =========================================================================
+# Notifications (in-app) + email stub
+# =========================================================================
+class Notification(BaseModel):
+    id: str
+    user_id: str
+    type: str
+    title: str
+    body: Optional[str] = None
+    href: Optional[str] = None
+    entity_id: Optional[str] = None
+    read: bool = False
+    created_at: datetime
+
+
+async def _notify(
+    user_id: str,
+    type: str,
+    title: str,
+    body: Optional[str] = None,
+    href: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    email_subject: Optional[str] = None,
+    email_html: Optional[str] = None,
+) -> None:
+    """Create an in-app notification for a user. Emails are stubbed for now."""
+    nid = f"ntf_{uuid.uuid4().hex[:10]}"
+    await db.notifications.insert_one({
+        "id": nid,
+        "user_id": user_id,
+        "type": type,
+        "title": title,
+        "body": body,
+        "href": href,
+        "entity_id": entity_id,
+        "read": False,
+        "created_at": _now(),
+    })
+    if email_subject and email_html:
+        # Email disabled until a provider is wired. Log so the signal is visible.
+        log.info("[email-stub] to=%s subject=%s", user_id, email_subject)
+
+
+@app.get("/api/notifications", response_model=List[Notification])
+async def list_notifications(user: User = Depends(get_current_user)):
+    docs = await db.notifications.find(
+        {"user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).limit(100).to_list(length=100)
+    return [Notification(**d) for d in docs]
+
+
+@app.get("/api/notifications/unread-count")
+async def unread_count(user: User = Depends(get_current_user)):
+    n = await db.notifications.count_documents({"user_id": user.user_id, "read": False})
+    return {"count": n}
+
+
+@app.post("/api/notifications/{nid}/read")
+async def mark_read(nid: str, user: User = Depends(get_current_user)):
+    r = await db.notifications.update_one({"id": nid, "user_id": user.user_id}, {"$set": {"read": True}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"ok": True}
+
+
+@app.post("/api/notifications/read-all")
+async def mark_all_read(user: User = Depends(get_current_user)):
+    await db.notifications.update_many({"user_id": user.user_id, "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+# =========================================================================
+# File uploads (local disk)
+# =========================================================================
+class FileMeta(BaseModel):
+    id: str
+    filename: str
+    content_type: str
+    size: int
+    owner_user_id: str
+    conversation_id: Optional[str] = None
+    contract_id: Optional[str] = None
+    milestone_id: Optional[str] = None
+    created_at: datetime
+
+
+async def _authorize_file_scope(
+    user: User,
+    conversation_id: Optional[str],
+    contract_id: Optional[str],
+    milestone_id: Optional[str],
+) -> None:
+    if conversation_id:
+        c = await db.conversations.find_one({"id": conversation_id}, {"_id": 0, "participants": 1})
+        if not c or user.user_id not in c.get("participants", []):
+            raise HTTPException(status_code=403, detail="Not a participant of this conversation")
+    if contract_id:
+        c = await db.contracts.find_one({"id": contract_id}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
+        if not c or user.user_id not in (c["client_user_id"], c["expert_user_id"]):
+            raise HTTPException(status_code=403, detail="Not a party to this contract")
+    if milestone_id:
+        ms = await db.milestones.find_one({"id": milestone_id}, {"_id": 0, "contract_id": 1})
+        if not ms:
+            raise HTTPException(status_code=404, detail="Milestone not found")
+        c = await db.contracts.find_one({"id": ms["contract_id"]}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
+        if not c or user.user_id not in (c["client_user_id"], c["expert_user_id"]):
+            raise HTTPException(status_code=403, detail="Not a party to this contract")
+
+
+@app.post("/api/files/upload", response_model=FileMeta)
+async def upload_file(
+    file: UploadFile = File(...),
+    conversation_id: Optional[str] = Form(None),
+    contract_id: Optional[str] = Form(None),
+    milestone_id: Optional[str] = Form(None),
+    user: User = Depends(get_current_user),
+):
+    await _authorize_file_scope(user, conversation_id, contract_id, milestone_id)
+    fid = f"fil_{uuid.uuid4().hex[:10]}"
+    safe_name = (file.filename or "upload").replace("/", "_")[:120]
+    # Preserve extension if present
+    dest = UPLOADS_DIR / f"{fid}_{safe_name}"
+    size = 0
+    with dest.open("wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_FILE_BYTES:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail=f"File exceeds {MAX_FILE_BYTES} bytes")
+            out.write(chunk)
+    meta = {
+        "id": fid,
+        "filename": safe_name,
+        "content_type": file.content_type or "application/octet-stream",
+        "size": size,
+        "owner_user_id": user.user_id,
+        "conversation_id": conversation_id,
+        "contract_id": contract_id,
+        "milestone_id": milestone_id,
+        "storage_path": str(dest),
+        "created_at": _now(),
+    }
+    await db.files.insert_one(meta)
+    meta.pop("_id", None)
+    meta.pop("storage_path", None)
+    return FileMeta(**meta)
+
+
+@app.get("/api/files/{fid}")
+async def download_file(fid: str, user: User = Depends(get_current_user)):
+    f = await db.files.find_one({"id": fid}, {"_id": 0})
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    await _authorize_file_scope(user, f.get("conversation_id"), f.get("contract_id"), f.get("milestone_id"))
+    path = _Path(f["storage_path"])
+    if not path.exists():
+        raise HTTPException(status_code=410, detail="File no longer available")
+    return FileResponse(path=str(path), filename=f["filename"], media_type=f["content_type"])
+
+
+# =========================================================================
+# Reviews (post-completion)
+# =========================================================================
+class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(min_length=3, max_length=2000)
+
+
+class Review(BaseModel):
+    id: str
+    contract_id: str
+    reviewer_user_id: str
+    reviewer_name: str
+    reviewee_user_id: str
+    rating: int
+    comment: str
+    created_at: datetime
+
+
+async def _recalc_expert_rating(user_id: str) -> None:
+    """Recompute rating + reviewCount on the expert profile for user_id."""
+    pipeline = [
+        {"$match": {"reviewee_user_id": user_id}},
+        {"$group": {"_id": None, "avg": {"$avg": "$rating"}, "count": {"$sum": 1}}},
+    ]
+    res = await db.reviews.aggregate(pipeline).to_list(length=1)
+    if not res:
+        return
+    avg = round(float(res[0]["avg"]), 2)
+    count = int(res[0]["count"])
+    await db.experts.update_one(
+        {"user_id": user_id},
+        {"$set": {"rating": avg, "reviewCount": count}},
+    )
+
+
+@app.post("/api/contracts/{contract_id}/reviews", response_model=Review)
+async def leave_review(contract_id: str, payload: ReviewIn, user: User = Depends(get_current_user)):
+    c = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    if user.user_id not in (c["client_user_id"], c["expert_user_id"]):
+        raise HTTPException(status_code=403, detail="Not a party to this contract")
+    if c["status"] != "completed":
+        raise HTTPException(status_code=400, detail="You can only review a completed contract")
+    reviewee = c["expert_user_id"] if user.user_id == c["client_user_id"] else c["client_user_id"]
+    dup = await db.reviews.find_one({"contract_id": contract_id, "reviewer_user_id": user.user_id}, {"_id": 0, "id": 1})
+    if dup:
+        raise HTTPException(status_code=400, detail="You already left a review on this contract")
+    rid = f"rev_{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": rid,
+        "contract_id": contract_id,
+        "reviewer_user_id": user.user_id,
+        "reviewer_name": user.name,
+        "reviewee_user_id": reviewee,
+        "rating": payload.rating,
+        "comment": payload.comment,
+        "created_at": _now(),
+    }
+    await db.reviews.insert_one(doc)
+    await _recalc_expert_rating(reviewee)
+    await _notify(
+        reviewee,
+        type="review.received",
+        title=f"New {payload.rating}★ review",
+        body=payload.comment[:140],
+        href=f"/contracts/{contract_id}",
+        entity_id=rid,
+    )
+    doc.pop("_id", None)
+    return Review(**doc)
+
+
+@app.get("/api/contracts/{contract_id}/reviews", response_model=List[Review])
+async def contract_reviews(contract_id: str, user: User = Depends(get_current_user)):
+    c = await db.contracts.find_one({"id": contract_id}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    if user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not a party to this contract")
+    docs = await db.reviews.find({"contract_id": contract_id}, {"_id": 0}).sort("created_at", -1).to_list(length=100)
+    return [Review(**d) for d in docs]
+
+
+@app.get("/api/experts/{expert_id}/reviews", response_model=List[Review])
+async def expert_reviews(expert_id: str):
+    exp = await db.experts.find_one({"id": expert_id}, {"_id": 0, "user_id": 1})
+    if not exp or not exp.get("user_id"):
+        return []
+    docs = await db.reviews.find({"reviewee_user_id": exp["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(length=100)
+    return [Review(**d) for d in docs]
+
+
+# =========================================================================
+# Disputes (simple)
+# =========================================================================
+class DisputeIn(BaseModel):
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class DisputeResolve(BaseModel):
+    action: Literal["release", "refund"]
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class Dispute(BaseModel):
+    id: str
+    milestone_id: str
+    contract_id: str
+    opened_by_user_id: str
+    opened_by_name: str
+    reason: str
+    status: str  # open | resolved
+    resolution: Optional[str] = None
+    resolution_action: Optional[str] = None
+    resolution_note: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by_admin_id: Optional[str] = None
+    created_at: datetime
+
+
+@app.post("/api/milestones/{milestone_id}/dispute", response_model=Dispute)
+async def file_dispute(milestone_id: str, payload: DisputeIn, user: User = Depends(get_current_user)):
+    ms = await db.milestones.find_one({"id": milestone_id}, {"_id": 0})
+    if not ms:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    c = await db.contracts.find_one({"id": ms["contract_id"]}, {"_id": 0})
+    if not c or user.user_id not in (c["client_user_id"], c["expert_user_id"]):
+        raise HTTPException(status_code=403, detail="Not a party to this contract")
+    if ms["status"] not in ("funded", "submitted"):
+        raise HTTPException(status_code=400, detail="Only funded or submitted milestones can be disputed")
+    open_existing = await db.disputes.find_one({"milestone_id": milestone_id, "status": "open"}, {"_id": 0, "id": 1})
+    if open_existing:
+        raise HTTPException(status_code=400, detail="A dispute is already open on this milestone")
+    did = f"dsp_{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": did,
+        "milestone_id": milestone_id,
+        "contract_id": ms["contract_id"],
+        "opened_by_user_id": user.user_id,
+        "opened_by_name": user.name,
+        "reason": payload.reason,
+        "status": "open",
+        "resolution": None,
+        "resolution_action": None,
+        "resolution_note": None,
+        "resolved_at": None,
+        "resolved_by_admin_id": None,
+        "created_at": _now(),
+    }
+    await db.disputes.insert_one(doc)
+    await db.milestones.update_one({"id": milestone_id}, {"$set": {"status": "disputed"}})
+    other = c["expert_user_id"] if user.user_id == c["client_user_id"] else c["client_user_id"]
+    await _notify(other, "dispute.opened", "Milestone dispute opened",
+                  body=f"A dispute has been filed on milestone '{ms['title']}'. Our team is reviewing.",
+                  href=f"/contracts/{c['id']}", entity_id=did)
+    # Notify all admins
+    async for a in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
+        await _notify(a["user_id"], "dispute.opened", "Dispute needs admin review",
+                      body=f"{user.name} filed a dispute on contract {c['id']}.",
+                      href="/admin", entity_id=did)
+    doc.pop("_id", None)
+    return Dispute(**doc)
+
+
+@app.get("/api/admin/disputes", response_model=List[Dispute])
+async def admin_list_disputes(status: Optional[str] = None, user: User = Depends(require_admin)):
+    q: dict = {}
+    if status:
+        q["status"] = status
+    docs = await db.disputes.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    return [Dispute(**d) for d in docs]
+
+
+@app.post("/api/admin/disputes/{dispute_id}/resolve", response_model=Dispute)
+async def admin_resolve_dispute(dispute_id: str, payload: DisputeResolve, admin: User = Depends(require_admin)):
+    d = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if d["status"] != "open":
+        raise HTTPException(status_code=400, detail="Dispute already resolved")
+    ms = await db.milestones.find_one({"id": d["milestone_id"]}, {"_id": 0})
+    c = await db.contracts.find_one({"id": d["contract_id"]}, {"_id": 0})
+    if not ms or not c:
+        raise HTTPException(status_code=404, detail="Contract/milestone missing")
+    resolution = ""
+    if payload.action == "release":
+        await db.milestones.update_one({"id": ms["id"]}, {"$set": {"status": "released", "released_at": _now()}})
+        resolution = "Funds released to expert."
+        remaining = await db.milestones.count_documents({"contract_id": c["id"], "status": {"$ne": "released"}})
+        if remaining == 0:
+            await db.contracts.update_one({"id": c["id"]}, {"$set": {"status": "completed"}})
+    else:  # refund
+        await db.milestones.update_one({"id": ms["id"]}, {"$set": {"status": "pending", "funded_at": None}})
+        resolution = "Funds refunded to client."
+    await db.disputes.update_one(
+        {"id": dispute_id},
+        {"$set": {
+            "status": "resolved",
+            "resolution": resolution,
+            "resolution_action": payload.action,
+            "resolution_note": payload.note,
+            "resolved_at": _now(),
+            "resolved_by_admin_id": admin.user_id,
+        }},
+    )
+    for uid in (c["client_user_id"], c["expert_user_id"]):
+        await _notify(uid, "dispute.resolved", "Dispute resolved", body=resolution,
+                      href=f"/contracts/{c['id']}", entity_id=dispute_id)
+    updated = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    return Dispute(**updated)
+
+
+# =========================================================================
 # Startup
 # =========================================================================
 @app.on_event("startup")
@@ -993,6 +1457,16 @@ async def _startup():
     await db.conversations.create_index("participants")
     await db.messages.create_index("conversation_id")
     await db.payment_transactions.create_index("session_id", unique=True)
+    await db.notifications.create_index("user_id")
+    await db.notifications.create_index([("user_id", 1), ("read", 1)])
+    await db.files.create_index("id", unique=True)
+    await db.files.create_index("conversation_id", sparse=True)
+    await db.files.create_index("contract_id", sparse=True)
+    await db.reviews.create_index("id", unique=True)
+    await db.reviews.create_index("contract_id")
+    await db.reviews.create_index("reviewee_user_id")
+    await db.disputes.create_index("id", unique=True)
+    await db.disputes.create_index("status")
 
     # Seed admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})

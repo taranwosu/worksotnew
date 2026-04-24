@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Paperclip, FileText } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
-import { listConversations, listMessages, sendMessage, type ConversationSummary, type Message } from "@/lib/api";
+import { listConversations, listMessages, sendMessage, uploadFile, fileDownloadUrl, type ConversationSummary, type Message } from "@/lib/api";
 import { Container, Eyebrow, Tag } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +13,9 @@ export function MessagesPage() {
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [draft, setDraft] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,6 +52,23 @@ export function MessagesPage() {
       setDraft("");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeId) return;
+    setUploading(true);
+    try {
+      const meta = await uploadFile(file, { conversation_id: activeId });
+      const body = `📎 ${meta.filename}`;
+      const m = await sendMessage(activeId, body, meta.id);
+      setMsgs((prev) => [...prev, m]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -123,13 +142,46 @@ export function MessagesPage() {
                           "max-w-[70%] rounded-lg px-3.5 py-2 text-[14px]",
                           mine ? "bg-ink text-cream" : "bg-cream-2 text-ink",
                         )}>
-                          {m.body}
+                          {m.file_id ? (
+                            <a
+                              href={fileDownloadUrl(m.file_id)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={cn(
+                                "flex items-center gap-2.5 rounded border px-2.5 py-2",
+                                mine ? "border-cream/20 hover:bg-ink-2" : "border-ink-10 bg-white hover:border-ink",
+                              )}
+                            >
+                              <FileText className="h-4 w-4 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="truncate text-[13px] font-medium">{m.file_name ?? "file"}</p>
+                                {m.file_size ? (
+                                  <p className={cn("font-mono text-[11px]", mine ? "text-cream/60" : "text-ink-60")}>
+                                    {(m.file_size / 1024).toFixed(1)} KB
+                                  </p>
+                                ) : null}
+                              </div>
+                            </a>
+                          ) : (
+                            m.body
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
                 <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-ink-10 px-4 py-3">
+                  <input ref={fileInputRef} type="file" onChange={handleAttach} className="hidden" />
+                  <button
+                    type="button"
+                    data-testid="attach-file"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded border border-ink-20 bg-white text-ink hover:border-ink disabled:opacity-50"
+                    aria-label="Attach file"
+                  >
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                  </button>
                   <input
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}

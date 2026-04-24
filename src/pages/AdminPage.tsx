@@ -9,8 +9,11 @@ import {
   adminUnverifyExpert,
   adminTogglePublish,
   adminListBriefs,
+  adminListDisputes,
+  adminResolveDispute,
   type AdminStats,
   type Brief,
+  type Dispute,
 } from "@/lib/api";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
@@ -34,7 +37,8 @@ export function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [experts, setExperts] = useState<ApiExpert[]>([]);
   const [briefs, setBriefs] = useState<Brief[]>([]);
-  const [tab, setTab] = useState<"queue" | "all" | "briefs">("queue");
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes">("queue");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,14 +51,16 @@ export function AdminPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [s, eAll, bs] = await Promise.all([
+      const [s, eAll, bs, ds] = await Promise.all([
         adminStats(),
         adminListExperts(),
         adminListBriefs(),
+        adminListDisputes().catch(() => [] as Dispute[]),
       ]);
       setStats(s);
       setExperts(eAll as ApiExpert[]);
       setBriefs(bs);
+      setDisputes(ds);
     } finally {
       setLoading(false);
     }
@@ -78,6 +84,11 @@ export function AdminPage() {
   };
   const handlePublish = async (id: string) => {
     await adminTogglePublish(id);
+    load();
+  };
+  const handleResolve = async (id: string, action: "release" | "refund") => {
+    const note = window.prompt(`Optional note for ${action}:`) ?? undefined;
+    await adminResolveDispute(id, action, note || undefined);
     load();
   };
   const handleSignOut = async () => {
@@ -118,7 +129,7 @@ export function AdminPage() {
         )}
 
         <div className="mt-10 flex gap-2 border-b border-cream/10">
-          {(["queue", "all", "briefs"] as const).map((t) => (
+          {(["queue", "all", "briefs", "disputes"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -127,7 +138,13 @@ export function AdminPage() {
                 tab === t ? "border-sun text-cream" : "border-transparent text-cream/50 hover:text-cream/80",
               )}
             >
-              {t === "queue" ? `Vetting queue (${unverified.length})` : t === "all" ? `All experts (${experts.length})` : `Briefs (${briefs.length})`}
+              {t === "queue"
+                ? `Vetting queue (${unverified.length})`
+                : t === "all"
+                ? `All experts (${experts.length})`
+                : t === "briefs"
+                ? `Briefs (${briefs.length})`
+                : `Disputes (${disputes.filter((d) => d.status === "open").length})`}
             </button>
           ))}
         </div>
@@ -145,6 +162,42 @@ export function AdminPage() {
                   <p className="text-[11.5px] text-cream/60">{b.category} · ${b.budget_min.toLocaleString()}–${b.budget_max.toLocaleString()} · {b.proposal_count} proposal{b.proposal_count === 1 ? "" : "s"}</p>
                 </div>
                 <Tag tone={b.status === "open" ? "sun" : "outline"} size="sm">{b.status}</Tag>
+              </div>
+            ))}
+          </div>
+        ) : tab === "disputes" ? (
+          <div className="mt-8 space-y-4">
+            {disputes.length === 0 ? (
+              <div className="rounded border border-cream/10 p-8 text-center text-[13px] text-cream/60">No disputes filed. 🎉</div>
+            ) : disputes.map((d) => (
+              <div key={d.id} className="rounded border border-cream/10 bg-ink-2 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cream/60">
+                      Contract {d.contract_id} · Milestone {d.milestone_id}
+                    </p>
+                    <p className="mt-1 font-display text-[15px] font-semibold">
+                      Filed by {d.opened_by_name}
+                    </p>
+                  </div>
+                  <Tag tone={d.status === "open" ? "sun" : "outline"} size="sm">{d.status}</Tag>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-[13.5px] leading-relaxed text-cream/80">{d.reason}</p>
+                {d.status === "resolved" ? (
+                  <p className="mt-4 rounded border border-cream/10 bg-ink-3 px-3 py-2 text-[12.5px] text-cream/70">
+                    <strong>{d.resolution_action}</strong>: {d.resolution}
+                    {d.resolution_note && <span className="block mt-1 text-cream/50">{d.resolution_note}</span>}
+                  </p>
+                ) : (
+                  <div className="mt-4 flex gap-2">
+                    <Button data-testid={`release-${d.id}`} tone="sun" size="sm" onClick={() => handleResolve(d.id, "release")}>
+                      Release to expert
+                    </Button>
+                    <Button data-testid={`refund-${d.id}`} tone="outline" size="sm" onClick={() => handleResolve(d.id, "refund")}>
+                      Refund client
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

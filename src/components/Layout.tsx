@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
+import { NotificationsBell } from "@/components/NotificationsBell";
 import { cn } from "@/lib/utils";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -128,6 +129,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   {hasExpertProfile ? "Browse projects" : "Post a brief"}
                 </LinkButton>
+
+                <NotificationsBell />
 
                 <div className="relative ml-1" ref={profileRef}>
                   <button
