@@ -10,10 +10,13 @@ import {
   FieldSelect,
   FieldHint,
 } from "@/components/primitives";
+import { submitContact, type ContactInput } from "@/lib/api";
 
 export function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
-  const [form, setForm] = useState({
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<ContactInput>({
     name: "",
     email: "",
     company: "",
@@ -21,9 +24,26 @@ export function ContactPage() {
     message: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    if (submitting) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await submitContact({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        company: form.company?.trim() || undefined,
+        topic: form.topic,
+        message: form.message.trim(),
+      });
+      setSubmitted(true);
+      setForm({ name: "", email: "", company: "", topic: "general", message: "" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send message");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -221,7 +241,10 @@ export function ContactPage() {
                         id="topic"
                         value={form.topic}
                         onChange={(e) =>
-                          setForm({ ...form, topic: e.target.value })
+                          setForm({
+                            ...form,
+                            topic: e.target.value as ContactInput["topic"],
+                          })
                         }
                       >
                         <option value="general">General inquiry</option>
@@ -249,12 +272,23 @@ export function ContactPage() {
                         hour between 09:00–19:00 ET.
                       </FieldHint>
                     </div>
+                    {error && (
+                      <div className="col-span-2 rounded border border-rust/40 bg-rust/5 px-4 py-3 text-[13px] text-rust">
+                        {error}
+                      </div>
+                    )}
                     <div className="col-span-2 flex items-center justify-between gap-4 border-t border-ink-12 pt-5">
                       <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
                         Confidential · never sold
                       </p>
-                      <Button tone="ink" size="lg" arrow type="submit">
-                        Send message
+                      <Button
+                        tone="ink"
+                        size="lg"
+                        arrow
+                        type="submit"
+                        disabled={submitting}
+                      >
+                        {submitting ? "Sending…" : "Send message"}
                       </Button>
                     </div>
                   </form>
