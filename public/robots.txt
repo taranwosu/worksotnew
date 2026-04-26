@@ -1,0 +1,14 @@
+# WorkSoy — robots.txt
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /onboarding/
+Disallow: /post-request
+Disallow: /briefs/
+Disallow: /contracts/
+Disallow: /messages
+
+Sitemap: https://worksoy.com/sitemap.xml

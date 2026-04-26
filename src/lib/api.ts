@@ -161,6 +161,22 @@ export async function apiLogout() {
   await req<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 }
 
+// ================= Contact =================
+export type ContactInput = {
+  name: string;
+  email: string;
+  company?: string;
+  topic: "general" | "bench" | "apply" | "press";
+  message: string;
+};
+
+export async function submitContact(input: ContactInput) {
+  return req<{ id: string }>("/api/contact", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 // ================= Briefs & Proposals =================
 export type Brief = {
   id: string;

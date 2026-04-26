@@ -26,6 +26,8 @@ import { ContractPage } from "./pages/ContractPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
+import { TermsPage } from "./pages/TermsPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -57,6 +59,8 @@ const routes = [
   make("/messages", MessagesPage),
   make("/admin/login", AdminLoginPage),
   make("/admin", AdminPage),
+  make("/legal/terms", TermsPage),
+  make("/legal/privacy", PrivacyPage),
 ];
 
 const routeTree = rootRoute.addChildren(routes);

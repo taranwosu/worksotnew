@@ -17,8 +17,15 @@ import {
   SectionHeader,
   Tag,
 } from "@/components/primitives";
+import { usePageMeta } from "@/lib/seo";
 
 export function HowItWorksPage() {
+  usePageMeta({
+    title: "How it works",
+    description:
+      "Brief, shortlist, finalists, signed SOW, milestone escrow, and dispute support — the full WorkSoy engagement, end to end.",
+    path: "/how-it-works",
+  });
   const steps = [
     {
       num: "01",
