@@ -7,6 +7,7 @@ import {
   useAuth,
 } from "@/lib/auth-client";
 import { apiRegister } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -19,6 +20,12 @@ import { cn } from "@/lib/utils";
 type Role = "client" | "expert";
 
 export function SignUpPage() {
+  usePageMeta({
+    title: "Create your account",
+    description: "Sign up for WorkSoy as a client or expert.",
+    path: "/signup",
+    robots: "noindex,nofollow",
+  });
   const navigate = useNavigate();
   const { setUser } = useAuth();
   const [role, setRole] = useState<Role>("client");

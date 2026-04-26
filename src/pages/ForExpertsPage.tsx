@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { Expert } from "@/data/experts";
 import { fetchExperts } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 import {
   Container,
   Eyebrow,
@@ -88,6 +89,12 @@ const stats = [
 ];
 
 export function ForExpertsPage() {
+  usePageMeta({
+    title: "For experts",
+    description:
+      "Apply to join the WorkSoy roster. Real briefs, escrow-funded milestones, transparent fees — built for senior independents.",
+    path: "/for-experts",
+  });
   const [experts, setExperts] = useState<Expert[]>([]);
   useEffect(() => {
     fetchExperts().then(setExperts).catch(() => setExperts([]));

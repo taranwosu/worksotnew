@@ -7,6 +7,7 @@ import {
   useAuth,
 } from "@/lib/auth-client";
 import { apiLogin } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -16,6 +17,12 @@ import {
 } from "@/components/primitives";
 
 export function SignInPage() {
+  usePageMeta({
+    title: "Sign in",
+    description: "Sign in to your WorkSoy account.",
+    path: "/signin",
+    robots: "noindex,nofollow",
+  });
   const navigate = useNavigate();
   const { setUser } = useAuth();
   const [email, setEmail] = useState("");
@@ -167,11 +174,11 @@ export function SignInPage() {
 
         <p className="mt-8 text-[11.5px] leading-relaxed text-ink-60">
           By signing in you agree to our{" "}
-          <Link to="/contact" className="link-sweep text-ink">
+          <Link to="/legal/terms" className="link-sweep text-ink">
             Terms
           </Link>{" "}
           &amp;{" "}
-          <Link to="/contact" className="link-sweep text-ink">
+          <Link to="/legal/privacy" className="link-sweep text-ink">
             Privacy
           </Link>
           . WorkSoy never sells member data.

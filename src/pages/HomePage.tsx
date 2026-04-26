@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { Expert } from "@/data/experts";
 import { fetchExperts } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 import { ExpertCard } from "@/components/ExpertCard";
 import {
   Container,
@@ -131,6 +132,12 @@ const guarantees = [
 ];
 
 export function HomePage() {
+  usePageMeta({
+    title: "WorkSoy — Premium contractors. Real accountability.",
+    description:
+      "Brief in, shortlist in 48 hours, contract signed by Friday. The premium network for vetted contractors, fractional leaders, and senior specialists.",
+    path: "/",
+  });
   const [featured, setFeatured] = useState<Expert[]>([]);
   const [avg, setAvg] = useState("4.96");
 

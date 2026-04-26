@@ -7,6 +7,7 @@ import {
   SectionHeader,
 } from "@/components/primitives";
 import { cn } from "@/lib/utils";
+import { usePageMeta } from "@/lib/seo";
 
 type Plan = {
   id: "starter" | "practice" | "enterprise";
@@ -113,6 +114,12 @@ const comparison = [
 ];
 
 export function PricingPage() {
+  usePageMeta({
+    title: "Pricing",
+    description:
+      "Transparent service-fee pricing for marketplace, practice, and enterprise tiers — no recruiter retainers, no agency markups.",
+    path: "/pricing",
+  });
   return (
     <div className="bg-cream">
       {/* Title band */}

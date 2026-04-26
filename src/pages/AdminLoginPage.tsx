@@ -4,8 +4,14 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { apiLogin } from "@/lib/api";
 import { useAuth } from "@/lib/auth-client";
 import { Container, Button, FieldInput, FieldLabel, Tag } from "@/components/primitives";
+import { usePageMeta } from "@/lib/seo";
 
 export function AdminLoginPage() {
+  usePageMeta({
+    title: "Admin sign in",
+    path: "/admin/login",
+    robots: "noindex,nofollow",
+  });
   const navigate = useNavigate();
   const { setUser } = useAuth();
   const [email, setEmail] = useState("admin@worksoy.com");

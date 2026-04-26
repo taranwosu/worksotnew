@@ -3,6 +3,7 @@ import { Search, LayoutGrid, Rows3, X } from "lucide-react";
 import type { Expert } from "@/data/experts";
 import { CATEGORY_IDS, CATEGORY_LABELS } from "@/data/experts";
 import { fetchExperts } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 import { ExpertCard } from "@/components/ExpertCard";
 import {
   Container,
@@ -16,6 +17,12 @@ type SortKey = "rating" | "price-asc" | "price-desc" | "responsiveness";
 type View = "grid" | "list";
 
 export function ExpertsPage() {
+  usePageMeta({
+    title: "Experts directory",
+    description:
+      "Browse vetted experts across finance, design, engineering, marketing and operations. Hand-picked, recently interviewed, available now.",
+    path: "/experts",
+  });
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [sortBy, setSortBy] = useState<SortKey>("rating");

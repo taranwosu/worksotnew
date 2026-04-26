@@ -11,8 +11,15 @@ import {
   FieldHint,
 } from "@/components/primitives";
 import { submitContact, type ContactInput } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 
 export function ContactPage() {
+  usePageMeta({
+    title: "Contact",
+    description:
+      "Reach the WorkSoy team — operations, bench/enterprise, contractor applications, or press. Reply within one business day.",
+    path: "/contact",
+  });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

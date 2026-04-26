@@ -469,12 +469,12 @@ function Footer() {
           </p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/legal/terms" className="hover:text-cream">
                 Terms
               </Link>
             </li>
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/legal/privacy" className="hover:text-cream">
                 Privacy
               </Link>
             </li>
@@ -484,7 +484,7 @@ function Footer() {
               </Link>
             </li>
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/legal/privacy" className="hover:text-cream">
                 Cookies
               </Link>
             </li>

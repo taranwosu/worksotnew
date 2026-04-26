@@ -51,6 +51,25 @@ MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
 
+# Opt-in Sentry. The `sentry-sdk` package is intentionally not in
+# requirements.txt; install it in the deployment image when SENTRY_DSN is set.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    try:
+        import sentry_sdk  # type: ignore[import-not-found]
+        from sentry_sdk.integrations.fastapi import FastApiIntegration  # type: ignore[import-not-found]
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=ENVIRONMENT,
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            integrations=[FastApiIntegration()],
+            send_default_pii=False,
+        )
+        log.info("Sentry enabled (env=%s)", ENVIRONMENT)
+    except ImportError:
+        log.warning("SENTRY_DSN set but sentry-sdk not installed; skipping init")
+
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -947,19 +966,51 @@ async def payment_status(session_id: str, request: Request, user: User = Depends
 
 
 @app.post("/api/webhook/stripe")
-async def stripe_webhook(request: Request):
+async def stripe_webhook(request: Request, response: Response):
     body = await request.body()
-    sig = request.headers.get("Stripe-Signature", "")
+    sig = (
+        request.headers.get("Stripe-Signature")
+        or request.headers.get("stripe-signature")
+        or ""
+    )
+    if not sig:
+        # No signature header — treat as unauthenticated. 400 makes Stripe
+        # retry; 200 would silently drop the event.
+        log.warning("stripe webhook rejected: missing Stripe-Signature header")
+        response.status_code = 400
+        return {"ok": False, "error": "missing_signature"}
+
     host_url = str(request.base_url)
     stripe = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{host_url}api/webhook/stripe")
     try:
         evt = await stripe.handle_webhook(body, sig)
-    except Exception as e:
-        log.warning("stripe webhook error: %s", e)
-        return {"ok": False}
+    except Exception as e:  # noqa: BLE001
+        # Signature failure or malformed payload. Return 400 so Stripe retries
+        # rather than silently 200ing.
+        log.warning("stripe webhook signature/parse error: %s", e)
+        response.status_code = 400
+        return {"ok": False, "error": "invalid_signature_or_payload"}
+
+    # Dedupe by event id when available; falls back to session_id+status so we
+    # never double-fund a milestone even if the upstream redelivers.
+    event_id = getattr(evt, "event_id", None) or getattr(evt, "id", None)
+    dedupe_key = event_id or f"{evt.session_id}:{evt.payment_status}"
+    try:
+        await db.webhook_events.insert_one(
+            {"key": dedupe_key, "session_id": evt.session_id,
+             "payment_status": evt.payment_status, "received_at": _now()}
+        )
+    except Exception as e:  # duplicate key → already processed
+        log.info("stripe webhook duplicate ignored key=%s err=%s", dedupe_key, e)
+        return {"ok": True, "deduped": True}
+
     if evt.session_id and evt.payment_status == "paid":
         tx = await db.payment_transactions.find_one({"session_id": evt.session_id}, {"_id": 0})
-        if tx and tx.get("payment_status") != "paid":
+        if not tx:
+            log.warning("stripe webhook for unknown session_id=%s", evt.session_id)
+            # Tell Stripe we received it; nothing to update on our side.
+            return {"ok": True, "unknown_session": True}
+        if tx.get("payment_status") != "paid":
             await db.payment_transactions.update_one(
                 {"session_id": evt.session_id},
                 {"$set": {"status": "complete", "payment_status": "paid", "updated_at": _now()}},
@@ -967,6 +1018,10 @@ async def stripe_webhook(request: Request):
             await db.milestones.update_one(
                 {"id": tx["milestone_id"], "status": "pending"},
                 {"$set": {"status": "funded", "funded_at": _now()}},
+            )
+            log.info(
+                "stripe webhook funded milestone=%s session=%s contract=%s",
+                tx.get("milestone_id"), evt.session_id, tx.get("contract_id"),
             )
     return {"ok": True}
 
@@ -1753,6 +1808,9 @@ async def _startup():
     await db.contact_submissions.create_index("id", unique=True)
     await db.contact_submissions.create_index("created_at")
     await db.contact_submissions.create_index("handled")
+    # Dedupe Stripe webhook deliveries — unique event id (or session+status fallback).
+    await db.webhook_events.create_index("key", unique=True)
+    await db.webhook_events.create_index("received_at")
 
     # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})
