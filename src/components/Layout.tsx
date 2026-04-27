@@ -196,6 +196,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             Become an expert
                           </MenuItem>
                         )}
+                        {amIAdmin && (
+                          <Link
+                            to="/admin"
+                            onClick={() => setProfileOpen(false)}
+                            className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <Shield className="h-4 w-4 text-slate-400" />
+                            Admin
+                          </Link>
+                        )}
                       </div>
                       <div className="border-t border-ink-08">
                         <button
@@ -304,6 +314,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         Become an expert
                       </MobileLink>
                     </>
+                  )}
+                  {amIAdmin && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setMobileOpen(false)}
+                      className="block rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      Admin
+                    </Link>
                   )}
                   <button
                     onClick={handleSignOut}
