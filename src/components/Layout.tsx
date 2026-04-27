@@ -7,6 +7,7 @@ import {
   User as UserIcon,
   MessageSquare,
   ArrowUpRight,
+  Shield,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
@@ -24,6 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession();
 
   const hasExpertProfile = session?.user?.role === "expert";
+  const amIAdmin = session?.user?.role === "admin";
   const unreadCount = 0;
 
   useEffect(() => {
