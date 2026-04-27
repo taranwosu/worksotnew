@@ -29,6 +29,11 @@ from fastapi.responses import FileResponse
 from pathlib import Path as _Path
 import shutil
 
+import hashlib
+import secrets
+
+from mailer import send_email, is_email_enabled
+
 load_dotenv()
 
 MONGO_URL = os.environ["MONGO_URL"]
@@ -47,6 +52,9 @@ CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 UPLOADS_DIR = _Path(os.environ.get("UPLOADS_DIR", "/app/backend/uploads"))
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
+# Public app URL used for links inside transactional emails (no trailing slash).
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://worksoy.com").rstrip("/")
+PASSWORD_RESET_TTL_MINUTES = int(os.environ.get("PASSWORD_RESET_TTL_MINUTES", "60"))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
@@ -214,6 +222,15 @@ class LoginIn(BaseModel):
 
 class GoogleSessionIn(BaseModel):
     session_id: str
+
+
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(min_length=16, max_length=200)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class ContactIn(BaseModel):
@@ -434,6 +451,22 @@ async def register(payload: RegisterIn, request: Request, response: Response):
     token = await _issue_session(user_id)
     _set_cookie(response, token)
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    next_step = "/onboarding/expert" if payload.role == "expert" else "/post-request"
+    await _notify(
+        user_id,
+        type="welcome",
+        title="Welcome to WorkSoy",
+        body="Your account is ready. Tell us what you need next.",
+        href=next_step,
+        email_subject="Welcome to WorkSoy",
+        email_html=(
+            f"<p>Hi {payload.name},</p>"
+            f"<p>Welcome to WorkSoy. Your account is ready.</p>"
+            f"<p><a href=\"{APP_BASE_URL}{next_step}\">"
+            f"Pick up where you left off</a></p>"
+            "<p>— WorkSoy Operations</p>"
+        ),
+    )
     return {"session_token": token, "user": User(**user).model_dump()}
 
 
@@ -509,6 +542,91 @@ async def logout(request: Request, response: Response):
     if token:
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/")
+    return {"ok": True}
+
+
+# =========================================================================
+# Password reset
+# =========================================================================
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _password_reset_email(name: str, link: str, ttl_minutes: int) -> tuple[str, str]:
+    subject = "Reset your WorkSoy password"
+    html = f"""
+    <p>Hi {name or 'there'},</p>
+    <p>We received a request to reset the password for your WorkSoy account.
+    Click the link below to choose a new one. This link expires in
+    {ttl_minutes} minutes.</p>
+    <p><a href="{link}">{link}</a></p>
+    <p>If you didn't ask for this, you can safely ignore this email — your
+    password won't change.</p>
+    <p>— WorkSoy Operations</p>
+    """.strip()
+    return subject, html
+
+
+@app.post("/api/auth/password-reset/request")
+async def password_reset_request(payload: PasswordResetRequestIn, request: Request):
+    """Always returns 200 to avoid leaking which emails exist. Sends an
+    email only if the address matches an account with a password (i.e. not
+    a Google-only account)."""
+    _rate_limit(request, "password-reset-request")
+    email = payload.email.lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user and user.get("password_hash"):
+        # Issue a fresh token; older unused tokens for this user remain valid
+        # until they expire (we cap to one active by deleting prior ones).
+        await db.password_resets.delete_many(
+            {"user_id": user["user_id"], "used": False}
+        )
+        raw = secrets.token_urlsafe(32)
+        await db.password_resets.insert_one({
+            "id": f"pr_{uuid.uuid4().hex[:12]}",
+            "user_id": user["user_id"],
+            "token_hash": _hash_token(raw),
+            "expires_at": _now() + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES),
+            "used": False,
+            "created_at": _now(),
+        })
+        link = f"{APP_BASE_URL}/reset-password?token={raw}"
+        subject, html = _password_reset_email(
+            user.get("name", ""), link, PASSWORD_RESET_TTL_MINUTES,
+        )
+        if is_email_enabled():
+            await send_email(email, subject, html)
+        else:
+            # Visible in server logs so dev environments without a mail
+            # provider can still complete the flow manually.
+            log.info("[password-reset] no email provider — link=%s", link)
+    return {"ok": True}
+
+
+@app.post("/api/auth/password-reset/confirm")
+async def password_reset_confirm(payload: PasswordResetConfirmIn, request: Request):
+    _rate_limit(request, "password-reset-confirm")
+    rec = await db.password_resets.find_one(
+        {"token_hash": _hash_token(payload.token)}, {"_id": 0}
+    )
+    if not rec or rec.get("used"):
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    exp = rec["expires_at"]
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < _now():
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    await db.users.update_one(
+        {"user_id": rec["user_id"]},
+        {"$set": {"password_hash": _hash(payload.password)}},
+    )
+    await db.password_resets.update_one(
+        {"id": rec["id"]}, {"$set": {"used": True, "used_at": _now()}}
+    )
+    # Invalidate all existing sessions on password change.
+    await db.user_sessions.delete_many({"user_id": rec["user_id"]})
     return {"ok": True}
 
 
@@ -1023,6 +1141,47 @@ async def stripe_webhook(request: Request, response: Response):
                 "stripe webhook funded milestone=%s session=%s contract=%s",
                 tx.get("milestone_id"), evt.session_id, tx.get("contract_id"),
             )
+            ms = await db.milestones.find_one({"id": tx["milestone_id"]}, {"_id": 0})
+            contract = await db.contracts.find_one(
+                {"id": tx["contract_id"]}, {"_id": 0}
+            )
+            if ms and contract:
+                amount_str = f"${ms.get('amount', 0):,}"
+                title = ms.get("title", "Milestone")
+                href = f"/contracts/{contract['id']}"
+                # Notify the expert that escrow is funded.
+                await _notify(
+                    contract["expert_user_id"],
+                    type="milestone.funded",
+                    title=f"Milestone funded: {title}",
+                    body=f"{amount_str} is in escrow. You can start work.",
+                    href=href,
+                    entity_id=ms["id"],
+                    email_subject=f"Milestone funded — {title}",
+                    email_html=(
+                        f"<p>Good news — the client funded the &ldquo;{title}&rdquo; "
+                        f"milestone for {amount_str}.</p>"
+                        f"<p>Funds are held in escrow and released when the work is "
+                        f"approved.</p>"
+                        f"<p><a href=\"{APP_BASE_URL}{href}\">Open the contract</a></p>"
+                    ),
+                )
+                # Confirmation receipt to the client.
+                await _notify(
+                    contract["client_user_id"],
+                    type="milestone.funded.client",
+                    title=f"Payment received: {title}",
+                    body=f"{amount_str} is in escrow.",
+                    href=href,
+                    entity_id=ms["id"],
+                    email_subject=f"Payment received — {title}",
+                    email_html=(
+                        f"<p>We received your payment of {amount_str} for "
+                        f"&ldquo;{title}&rdquo;.</p>"
+                        f"<p>Funds are held in escrow until you approve the work.</p>"
+                        f"<p><a href=\"{APP_BASE_URL}{href}\">View the contract</a></p>"
+                    ),
+                )
     return {"ok": True}
 
 
@@ -1271,8 +1430,14 @@ async def _notify(
         "created_at": _now(),
     })
     if email_subject and email_html:
-        # Email disabled until a provider is wired. Log so the signal is visible.
-        log.info("[email-stub] to=%s subject=%s", user_id, email_subject)
+        if is_email_enabled():
+            udoc = await db.users.find_one(
+                {"user_id": user_id}, {"_id": 0, "email": 1}
+            )
+            if udoc and udoc.get("email"):
+                await send_email(udoc["email"], email_subject, email_html)
+        else:
+            log.info("[email-disabled] to=%s subject=%s", user_id, email_subject)
 
 
 @app.get("/api/notifications", response_model=List[Notification])
@@ -1811,6 +1976,11 @@ async def _startup():
     # Dedupe Stripe webhook deliveries — unique event id (or session+status fallback).
     await db.webhook_events.create_index("key", unique=True)
     await db.webhook_events.create_index("received_at")
+    # Password reset tokens — looked up by hash, expire automatically via TTL.
+    await db.password_resets.create_index("id", unique=True)
+    await db.password_resets.create_index("token_hash", unique=True)
+    await db.password_resets.create_index("user_id")
+    await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
 
     # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})

@@ -28,6 +28,8 @@ import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
 import { TermsPage } from "./pages/TermsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -61,6 +63,8 @@ const routes = [
   make("/admin", AdminPage),
   make("/legal/terms", TermsPage),
   make("/legal/privacy", PrivacyPage),
+  make("/forgot-password", ForgotPasswordPage),
+  make("/reset-password", ResetPasswordPage),
 ];
 
 const routeTree = rootRoute.addChildren(routes);

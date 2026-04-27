@@ -112,12 +112,12 @@ export function SignInPage() {
           <div>
             <div className="flex items-center justify-between">
               <FieldLabel htmlFor="password">Password</FieldLabel>
-              <button
-                type="button"
+              <Link
+                to="/forgot-password"
                 className="text-[12px] text-ink-60 hover:text-ink"
               >
                 Forgot?
-              </button>
+              </Link>
             </div>
             <FieldInput
               id="password"
