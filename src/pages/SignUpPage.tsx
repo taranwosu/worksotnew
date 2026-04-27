@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth-client";
 import { apiRegister } from "@/lib/api";
 import { usePageMeta } from "@/lib/seo";
+import { track } from "@/lib/analytics";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -40,8 +41,9 @@ export function SignUpPage() {
     setError(null);
     setIsLoading(true);
     try {
-      const { user } = await apiRegister(email, password, name);
+      const { user } = await apiRegister(email, password, name, role);
       setUser(user);
+      track("user.signed_up", { role, method: "email" });
       if (role === "expert") {
         navigate({ to: "/onboarding/expert" });
       } else {

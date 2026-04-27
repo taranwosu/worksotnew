@@ -7,6 +7,7 @@ import {
   apiGoogleSession,
   type AuthUser,
 } from "@/lib/api";
+import { identify, resetAnalytics } from "@/lib/analytics";
 
 export const AUTH_CONFIG = {
   authEnabled: true,
@@ -64,6 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setUser = useCallback((u: AuthUser | null) => {
     setData(toSession(u));
     setPending(false);
+    if (u) {
+      identify(u.user_id, { email: u.email, name: u.name, role: u.role });
+    } else {
+      resetAnalytics();
+    }
   }, []);
 
   // Handle Emergent OAuth #session_id= on landing, then /auth/me
@@ -151,6 +157,7 @@ export async function signInWithGoogle(callbackURL?: string): Promise<AuthResult
 export async function signOutUser(): Promise<AuthResult> {
   try {
     await apiLogout();
+    resetAnalytics();
     window.dispatchEvent(new Event("worksoy:auth-changed"));
     return { success: true };
   } catch (e) {

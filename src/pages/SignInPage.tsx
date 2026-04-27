@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth-client";
 import { apiLogin } from "@/lib/api";
 import { usePageMeta } from "@/lib/seo";
+import { track } from "@/lib/analytics";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -37,6 +38,7 @@ export function SignInPage() {
     try {
       const { user } = await apiLogin(email, password);
       setUser(user);
+      track("user.signed_in", { method: "email" });
       navigate({ to: "/dashboard" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");

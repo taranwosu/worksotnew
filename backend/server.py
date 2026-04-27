@@ -33,6 +33,7 @@ import hashlib
 import secrets
 
 from mailer import send_email, is_email_enabled
+from analytics import track as track_event
 
 load_dotenv()
 
@@ -1140,6 +1141,16 @@ async def stripe_webhook(request: Request, response: Response):
             log.info(
                 "stripe webhook funded milestone=%s session=%s contract=%s",
                 tx.get("milestone_id"), evt.session_id, tx.get("contract_id"),
+            )
+            await track_event(
+                tx["user_id"],
+                "milestone.funded",
+                {
+                    "milestone_id": tx["milestone_id"],
+                    "contract_id": tx["contract_id"],
+                    "amount": tx.get("amount"),
+                    "currency": tx.get("currency", "usd"),
+                },
             )
             ms = await db.milestones.find_one({"id": tx["milestone_id"]}, {"_id": 0})
             contract = await db.contracts.find_one(
