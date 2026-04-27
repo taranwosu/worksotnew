@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { Expert } from "@/data/experts";
 import { fetchExperts } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
 import { ExpertCard } from "@/components/ExpertCard";
 import {
   Container,
@@ -131,6 +132,12 @@ const guarantees = [
 ];
 
 export function HomePage() {
+  usePageMeta({
+    title: "WorkSoy — Premium contractors. Real accountability.",
+    description:
+      "Brief in, shortlist in 48 hours, contract signed by Friday. The premium network for vetted contractors, fractional leaders, and senior specialists.",
+    path: "/",
+  });
   const [featured, setFeatured] = useState<Expert[]>([]);
   const [avg, setAvg] = useState("4.96");
 
@@ -219,10 +226,11 @@ export function HomePage() {
 
             {/* Right column — portrait collage + ticker */}
             <div className="md:col-span-4">
+              {featured.length >= 2 ? (
               <div className="relative md:sticky md:top-24">
                 <div className="relative aspect-[4/5] overflow-hidden rounded border border-ink-12 bg-cream-3">
                   <img
-                    src={experts[1].image}
+                    src={featured[0].image}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -240,16 +248,16 @@ export function HomePage() {
                         Candidate 01
                       </p>
                       <p className="mt-0.5 font-display text-[17px] font-medium leading-tight">
-                        {experts[1].name.split(",")[0]}
+                        {featured[0].name.split(",")[0]}
                       </p>
                       <p className="text-[11px] text-cream/80">
-                        {experts[1].specialty}
+                        {featured[0].specialty}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="font-mono text-[11px] text-cream/60">USD/hr</p>
                       <p className="font-display text-[22px] font-medium leading-none tabular">
-                        {experts[1].hourlyRate}
+                        {featured[0].hourlyRate}
                       </p>
                     </div>
                   </div>
@@ -259,28 +267,31 @@ export function HomePage() {
                 <div className="absolute -left-4 -bottom-6 hidden w-[180px] rotate-[-3deg] border border-ink-12 bg-cream p-3 shadow-[0_12px_32px_-14px_rgba(26,26,26,0.35)] md:block">
                   <div className="flex items-center gap-2">
                     <img
-                      src={experts[3].image}
+                      src={featured[1].image}
                       alt=""
                       className="h-8 w-8 rounded-full object-cover"
                     />
                     <div className="min-w-0">
                       <p className="truncate font-display text-[12px] font-semibold">
-                        {experts[3].name.split(",")[0]}
+                        {featured[1].name.split(",")[0]}
                       </p>
                       <p className="truncate text-[10px] text-ink-60">
-                        {experts[3].title}
+                        {featured[1].title}
                       </p>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-between text-[10px] text-ink-60">
                     <span className="flex items-center gap-1">
                       <Star className="h-2.5 w-2.5 fill-sun text-sun" />
-                      {experts[3].rating} · {experts[3].reviewCount}
+                      {featured[1].rating} · {featured[1].reviewCount}
                     </span>
-                    <span className="font-mono">${experts[3].hourlyRate}/hr</span>
+                    <span className="font-mono">${featured[1].hourlyRate}/hr</span>
                   </div>
                 </div>
               </div>
+              ) : (
+                <div className="md:sticky md:top-24 aspect-[4/5] rounded border border-ink-12 bg-cream-3" />
+              )}
             </div>
           </div>
 

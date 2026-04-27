@@ -11,6 +11,7 @@ import {
   type Brief,
   type Proposal,
 } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { Container, Eyebrow, Tag, Button, FieldInput, FieldLabel, FieldTextarea } from "@/components/primitives";
 
 export function BriefDetailPage() {
@@ -54,6 +55,11 @@ export function BriefDetailPage() {
         rate_type: form.rate_type,
         estimated_duration_weeks: parseInt(form.estimated_duration_weeks, 10) || brief.duration_weeks,
       });
+      track("proposal.submitted", {
+        brief_id: briefId,
+        proposed_rate: parseFloat(form.proposed_rate),
+        rate_type: form.rate_type,
+      });
       setShowForm(false);
       setForm({ cover_letter: "", proposed_rate: "", rate_type: "fixed", estimated_duration_weeks: "" });
       load();
@@ -65,8 +71,11 @@ export function BriefDetailPage() {
   };
 
   const handleAccept = async (id: string) => {
-    try { const c = await acceptProposal(id); navigate({ to: "/contracts/$contractId", params: { contractId: c.id } }); }
-    catch (err) { alert(err instanceof Error ? err.message : "Failed"); }
+    try {
+      const c = await acceptProposal(id);
+      track("proposal.accepted", { proposal_id: id, contract_id: c.id });
+      navigate({ to: "/contracts/$contractId", params: { contractId: c.id } });
+    } catch (err) { alert(err instanceof Error ? err.message : "Failed"); }
   };
   const handleReject = async (id: string) => {
     try { await rejectProposal(id); load(); } catch (err) { alert(String(err)); }

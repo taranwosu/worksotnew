@@ -6,7 +6,7 @@
  */
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { anonymous, genericOAuth, admin, apiKey } from "better-auth/plugins";
+import { anonymous, genericOAuth, admin } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import {
   adminAc,
@@ -222,11 +222,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         "service-admin": serviceAdminRole,
       },
     }),
-    apiKey({
-      // Enable session creation for API key requests
-      // This allows API keys to authenticate admin operations
-      enableSessionForAPIKeys: true,
-    }),
+    // apiKey plugin removed — not exported by better-auth 1.6+. Re-add via
+    // a dedicated plugin package if API-key auth is needed in future.
     ...(AUTH_CONFIG.authEnabled && AUTH_CONFIG.googleEnabled
       ? [genericOAuth({
       config: [{

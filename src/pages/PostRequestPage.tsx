@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { createBrief } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import {
   Container,
   Eyebrow,
@@ -64,6 +65,13 @@ export function PostRequestPage() {
         duration_weeks: parseInt(form.duration_weeks, 10) || 4,
         remote_ok: form.remote_ok,
         location: form.location,
+      });
+      track("brief.created", {
+        brief_id: brief.id,
+        category: brief.category,
+        budget_min: brief.budget_min,
+        budget_max: brief.budget_max,
+        engagement_type: brief.engagement_type,
       });
       navigate({ to: "/briefs/$briefId", params: { briefId: brief.id } });
     } catch (err) {

@@ -161,6 +161,36 @@ export async function apiLogout() {
   await req<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 }
 
+export async function apiRequestPasswordReset(email: string) {
+  return req<{ ok: boolean }>("/api/auth/password-reset/request", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function apiConfirmPasswordReset(token: string, password: string) {
+  return req<{ ok: boolean }>("/api/auth/password-reset/confirm", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+}
+
+// ================= Contact =================
+export type ContactInput = {
+  name: string;
+  email: string;
+  company?: string;
+  topic: "general" | "bench" | "apply" | "press";
+  message: string;
+};
+
+export async function submitContact(input: ContactInput) {
+  return req<{ id: string }>("/api/contact", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 // ================= Briefs & Proposals =================
 export type Brief = {
   id: string;

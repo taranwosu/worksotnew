@@ -17,6 +17,7 @@ import {
 import { DisputeThread } from "@/components/DisputeThread";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
+import { usePageMeta } from "@/lib/seo";
 
 type ApiExpert = {
   id: string;
@@ -32,6 +33,11 @@ type ApiExpert = {
 };
 
 export function AdminPage() {
+  usePageMeta({
+    title: "Admin",
+    path: "/admin",
+    robots: "noindex,nofollow",
+  });
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
   const [stats, setStats] = useState<AdminStats | null>(null);

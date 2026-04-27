@@ -29,6 +29,12 @@ from fastapi.responses import FileResponse
 from pathlib import Path as _Path
 import shutil
 
+import hashlib
+import secrets
+
+from mailer import send_email, is_email_enabled
+from analytics import track as track_event
+
 load_dotenv()
 
 MONGO_URL = os.environ["MONGO_URL"]
@@ -36,27 +42,70 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 EMERGENT_AUTH_URL = os.environ["EMERGENT_AUTH_URL"]
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
-ADMIN_EMAIL = "admin@worksoy.com"
-ADMIN_PASSWORD = "WorkSoy!Admin2026"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@worksoy.com")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+# Comma-separated list of origins permitted to call the API. Falls back to
+# permissive only when ENVIRONMENT is unset or "development" so production
+# deployments must opt-in explicitly.
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
+_cors_raw = os.environ.get("CORS_ORIGINS", "").strip()
+CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 UPLOADS_DIR = _Path(os.environ.get("UPLOADS_DIR", "/app/backend/uploads"))
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
+# Public app URL used for links inside transactional emails (no trailing slash).
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://worksoy.com").rstrip("/")
+PASSWORD_RESET_TTL_MINUTES = int(os.environ.get("PASSWORD_RESET_TTL_MINUTES", "60"))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
+
+# Opt-in Sentry. The `sentry-sdk` package is intentionally not in
+# requirements.txt; install it in the deployment image when SENTRY_DSN is set.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    try:
+        import sentry_sdk  # type: ignore[import-not-found]
+        from sentry_sdk.integrations.fastapi import FastApiIntegration  # type: ignore[import-not-found]
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=ENVIRONMENT,
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            integrations=[FastApiIntegration()],
+            send_default_pii=False,
+        )
+        log.info("Sentry enabled (env=%s)", ENVIRONMENT)
+    except ImportError:
+        log.warning("SENTRY_DSN set but sentry-sdk not installed; skipping init")
 
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 app = FastAPI(title="WorkSoy API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r".*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+elif ENVIRONMENT in ("development", "dev", "local", "test"):
+    log.warning("CORS_ORIGINS not set; allowing all origins (development only)")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    raise RuntimeError(
+        "CORS_ORIGINS must be set in non-development environments "
+        "(comma-separated list of allowed origins)."
+    )
 
 
 # =========================================================================
@@ -114,6 +163,40 @@ def _extract_token(request: Request) -> Optional[str]:
 
 
 # =========================================================================
+# Auth rate limiter — in-process, fixed-window per IP+bucket.
+# Single-instance only; swap for Redis-backed limiter when scaling out.
+# =========================================================================
+AUTH_RL_MAX = int(os.environ.get("AUTH_RATE_LIMIT_MAX_ATTEMPTS", "5"))
+AUTH_RL_WINDOW = int(os.environ.get("AUTH_RATE_LIMIT_WINDOW_SECONDS", "900"))
+_auth_attempts: dict[str, tuple[int, float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit(request: Request, bucket: str) -> None:
+    """Raise 429 if the caller has exceeded AUTH_RL_MAX in the current window."""
+    key = f"{bucket}:{_client_ip(request)}"
+    now = _now().timestamp()
+    count, window_start = _auth_attempts.get(key, (0, now))
+    if now - window_start > AUTH_RL_WINDOW:
+        count, window_start = 0, now
+    count += 1
+    _auth_attempts[key] = (count, window_start)
+    if count > AUTH_RL_MAX:
+        retry_after = int(AUTH_RL_WINDOW - (now - window_start))
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts. Please try again later.",
+            headers={"Retry-After": str(max(retry_after, 1))},
+        )
+
+
+# =========================================================================
 # Models — public shapes
 # =========================================================================
 class User(BaseModel):
@@ -140,6 +223,34 @@ class LoginIn(BaseModel):
 
 class GoogleSessionIn(BaseModel):
     session_id: str
+
+
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(min_length=16, max_length=200)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class ContactIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: EmailStr
+    company: Optional[str] = Field(default=None, max_length=120)
+    topic: Literal["general", "bench", "apply", "press"] = "general"
+    message: str = Field(min_length=10, max_length=5000)
+
+
+class ContactSubmission(BaseModel):
+    id: str
+    name: str
+    email: str
+    company: Optional[str] = None
+    topic: str
+    message: str
+    created_at: datetime
+    handled: bool = False
 
 
 class Expert(BaseModel):
@@ -320,7 +431,8 @@ async def health():
 
 
 @app.post("/api/auth/register")
-async def register(payload: RegisterIn, response: Response):
+async def register(payload: RegisterIn, request: Request, response: Response):
+    _rate_limit(request, "register")
     existing = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0, "user_id": 1})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -340,11 +452,28 @@ async def register(payload: RegisterIn, response: Response):
     token = await _issue_session(user_id)
     _set_cookie(response, token)
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    next_step = "/onboarding/expert" if payload.role == "expert" else "/post-request"
+    await _notify(
+        user_id,
+        type="welcome",
+        title="Welcome to WorkSoy",
+        body="Your account is ready. Tell us what you need next.",
+        href=next_step,
+        email_subject="Welcome to WorkSoy",
+        email_html=(
+            f"<p>Hi {payload.name},</p>"
+            f"<p>Welcome to WorkSoy. Your account is ready.</p>"
+            f"<p><a href=\"{APP_BASE_URL}{next_step}\">"
+            f"Pick up where you left off</a></p>"
+            "<p>— WorkSoy Operations</p>"
+        ),
+    )
     return {"session_token": token, "user": User(**user).model_dump()}
 
 
 @app.post("/api/auth/login")
-async def login(payload: LoginIn, response: Response):
+async def login(payload: LoginIn, request: Request, response: Response):
+    _rate_limit(request, "login")
     u = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
     if not u or not u.get("password_hash"):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -357,7 +486,8 @@ async def login(payload: LoginIn, response: Response):
 
 
 @app.post("/api/auth/google-session")
-async def google_session(payload: GoogleSessionIn, response: Response):
+async def google_session(payload: GoogleSessionIn, request: Request, response: Response):
+    _rate_limit(request, "google-session")
     async with httpx.AsyncClient(timeout=10.0) as http:
         r = await http.get(EMERGENT_AUTH_URL, headers={"X-Session-ID": payload.session_id})
         if r.status_code != 200:
@@ -413,6 +543,139 @@ async def logout(request: Request, response: Response):
     if token:
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/")
+    return {"ok": True}
+
+
+# =========================================================================
+# Password reset
+# =========================================================================
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _password_reset_email(name: str, link: str, ttl_minutes: int) -> tuple[str, str]:
+    subject = "Reset your WorkSoy password"
+    html = f"""
+    <p>Hi {name or 'there'},</p>
+    <p>We received a request to reset the password for your WorkSoy account.
+    Click the link below to choose a new one. This link expires in
+    {ttl_minutes} minutes.</p>
+    <p><a href="{link}">{link}</a></p>
+    <p>If you didn't ask for this, you can safely ignore this email — your
+    password won't change.</p>
+    <p>— WorkSoy Operations</p>
+    """.strip()
+    return subject, html
+
+
+@app.post("/api/auth/password-reset/request")
+async def password_reset_request(payload: PasswordResetRequestIn, request: Request):
+    """Always returns 200 to avoid leaking which emails exist. Sends an
+    email only if the address matches an account with a password (i.e. not
+    a Google-only account)."""
+    _rate_limit(request, "password-reset-request")
+    email = payload.email.lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if user and user.get("password_hash"):
+        # Issue a fresh token; older unused tokens for this user remain valid
+        # until they expire (we cap to one active by deleting prior ones).
+        await db.password_resets.delete_many(
+            {"user_id": user["user_id"], "used": False}
+        )
+        raw = secrets.token_urlsafe(32)
+        await db.password_resets.insert_one({
+            "id": f"pr_{uuid.uuid4().hex[:12]}",
+            "user_id": user["user_id"],
+            "token_hash": _hash_token(raw),
+            "expires_at": _now() + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES),
+            "used": False,
+            "created_at": _now(),
+        })
+        link = f"{APP_BASE_URL}/reset-password?token={raw}"
+        subject, html = _password_reset_email(
+            user.get("name", ""), link, PASSWORD_RESET_TTL_MINUTES,
+        )
+        if is_email_enabled():
+            await send_email(email, subject, html)
+        else:
+            # Visible in server logs so dev environments without a mail
+            # provider can still complete the flow manually.
+            log.info("[password-reset] no email provider — link=%s", link)
+    return {"ok": True}
+
+
+@app.post("/api/auth/password-reset/confirm")
+async def password_reset_confirm(payload: PasswordResetConfirmIn, request: Request):
+    _rate_limit(request, "password-reset-confirm")
+    rec = await db.password_resets.find_one(
+        {"token_hash": _hash_token(payload.token)}, {"_id": 0}
+    )
+    if not rec or rec.get("used"):
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    exp = rec["expires_at"]
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < _now():
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    await db.users.update_one(
+        {"user_id": rec["user_id"]},
+        {"$set": {"password_hash": _hash(payload.password)}},
+    )
+    await db.password_resets.update_one(
+        {"id": rec["id"]}, {"$set": {"used": True, "used_at": _now()}}
+    )
+    # Invalidate all existing sessions on password change.
+    await db.user_sessions.delete_many({"user_id": rec["user_id"]})
+    return {"ok": True}
+
+
+# =========================================================================
+# Contact form
+# =========================================================================
+@app.post("/api/contact", response_model=ContactSubmission)
+async def submit_contact(payload: ContactIn, request: Request):
+    _rate_limit(request, "contact")
+    doc = {
+        "id": f"contact_{uuid.uuid4().hex[:12]}",
+        "name": payload.name.strip(),
+        "email": payload.email.lower(),
+        "company": (payload.company or "").strip() or None,
+        "topic": payload.topic,
+        "message": payload.message.strip(),
+        "created_at": _now(),
+        "handled": False,
+        "source_ip": _client_ip(request),
+    }
+    await db.contact_submissions.insert_one(doc)
+    log.info("contact_submission topic=%s email=%s", doc["topic"], doc["email"])
+    doc.pop("source_ip", None)
+    return ContactSubmission(**doc)
+
+
+@app.get("/api/admin/contact-submissions", response_model=List[ContactSubmission])
+async def list_contact_submissions(
+    handled: Optional[bool] = None,
+    _: User = Depends(require_admin),
+):
+    query: dict = {}
+    if handled is not None:
+        query["handled"] = handled
+    cursor = db.contact_submissions.find(query, {"_id": 0, "source_ip": 0}).sort("created_at", -1).limit(500)
+    return [ContactSubmission(**doc) async for doc in cursor]
+
+
+@app.post("/api/admin/contact-submissions/{submission_id}/handled")
+async def mark_contact_handled(
+    submission_id: str,
+    _: User = Depends(require_admin),
+):
+    res = await db.contact_submissions.update_one(
+        {"id": submission_id}, {"$set": {"handled": True, "handled_at": _now()}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Submission not found")
     return {"ok": True}
 
 
@@ -822,19 +1085,51 @@ async def payment_status(session_id: str, request: Request, user: User = Depends
 
 
 @app.post("/api/webhook/stripe")
-async def stripe_webhook(request: Request):
+async def stripe_webhook(request: Request, response: Response):
     body = await request.body()
-    sig = request.headers.get("Stripe-Signature", "")
+    sig = (
+        request.headers.get("Stripe-Signature")
+        or request.headers.get("stripe-signature")
+        or ""
+    )
+    if not sig:
+        # No signature header — treat as unauthenticated. 400 makes Stripe
+        # retry; 200 would silently drop the event.
+        log.warning("stripe webhook rejected: missing Stripe-Signature header")
+        response.status_code = 400
+        return {"ok": False, "error": "missing_signature"}
+
     host_url = str(request.base_url)
     stripe = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{host_url}api/webhook/stripe")
     try:
         evt = await stripe.handle_webhook(body, sig)
-    except Exception as e:
-        log.warning("stripe webhook error: %s", e)
-        return {"ok": False}
+    except Exception as e:  # noqa: BLE001
+        # Signature failure or malformed payload. Return 400 so Stripe retries
+        # rather than silently 200ing.
+        log.warning("stripe webhook signature/parse error: %s", e)
+        response.status_code = 400
+        return {"ok": False, "error": "invalid_signature_or_payload"}
+
+    # Dedupe by event id when available; falls back to session_id+status so we
+    # never double-fund a milestone even if the upstream redelivers.
+    event_id = getattr(evt, "event_id", None) or getattr(evt, "id", None)
+    dedupe_key = event_id or f"{evt.session_id}:{evt.payment_status}"
+    try:
+        await db.webhook_events.insert_one(
+            {"key": dedupe_key, "session_id": evt.session_id,
+             "payment_status": evt.payment_status, "received_at": _now()}
+        )
+    except Exception as e:  # duplicate key → already processed
+        log.info("stripe webhook duplicate ignored key=%s err=%s", dedupe_key, e)
+        return {"ok": True, "deduped": True}
+
     if evt.session_id and evt.payment_status == "paid":
         tx = await db.payment_transactions.find_one({"session_id": evt.session_id}, {"_id": 0})
-        if tx and tx.get("payment_status") != "paid":
+        if not tx:
+            log.warning("stripe webhook for unknown session_id=%s", evt.session_id)
+            # Tell Stripe we received it; nothing to update on our side.
+            return {"ok": True, "unknown_session": True}
+        if tx.get("payment_status") != "paid":
             await db.payment_transactions.update_one(
                 {"session_id": evt.session_id},
                 {"$set": {"status": "complete", "payment_status": "paid", "updated_at": _now()}},
@@ -843,6 +1138,61 @@ async def stripe_webhook(request: Request):
                 {"id": tx["milestone_id"], "status": "pending"},
                 {"$set": {"status": "funded", "funded_at": _now()}},
             )
+            log.info(
+                "stripe webhook funded milestone=%s session=%s contract=%s",
+                tx.get("milestone_id"), evt.session_id, tx.get("contract_id"),
+            )
+            await track_event(
+                tx["user_id"],
+                "milestone.funded",
+                {
+                    "milestone_id": tx["milestone_id"],
+                    "contract_id": tx["contract_id"],
+                    "amount": tx.get("amount"),
+                    "currency": tx.get("currency", "usd"),
+                },
+            )
+            ms = await db.milestones.find_one({"id": tx["milestone_id"]}, {"_id": 0})
+            contract = await db.contracts.find_one(
+                {"id": tx["contract_id"]}, {"_id": 0}
+            )
+            if ms and contract:
+                amount_str = f"${ms.get('amount', 0):,}"
+                title = ms.get("title", "Milestone")
+                href = f"/contracts/{contract['id']}"
+                # Notify the expert that escrow is funded.
+                await _notify(
+                    contract["expert_user_id"],
+                    type="milestone.funded",
+                    title=f"Milestone funded: {title}",
+                    body=f"{amount_str} is in escrow. You can start work.",
+                    href=href,
+                    entity_id=ms["id"],
+                    email_subject=f"Milestone funded — {title}",
+                    email_html=(
+                        f"<p>Good news — the client funded the &ldquo;{title}&rdquo; "
+                        f"milestone for {amount_str}.</p>"
+                        f"<p>Funds are held in escrow and released when the work is "
+                        f"approved.</p>"
+                        f"<p><a href=\"{APP_BASE_URL}{href}\">Open the contract</a></p>"
+                    ),
+                )
+                # Confirmation receipt to the client.
+                await _notify(
+                    contract["client_user_id"],
+                    type="milestone.funded.client",
+                    title=f"Payment received: {title}",
+                    body=f"{amount_str} is in escrow.",
+                    href=href,
+                    entity_id=ms["id"],
+                    email_subject=f"Payment received — {title}",
+                    email_html=(
+                        f"<p>We received your payment of {amount_str} for "
+                        f"&ldquo;{title}&rdquo;.</p>"
+                        f"<p>Funds are held in escrow until you approve the work.</p>"
+                        f"<p><a href=\"{APP_BASE_URL}{href}\">View the contract</a></p>"
+                    ),
+                )
     return {"ok": True}
 
 
@@ -1091,8 +1441,14 @@ async def _notify(
         "created_at": _now(),
     })
     if email_subject and email_html:
-        # Email disabled until a provider is wired. Log so the signal is visible.
-        log.info("[email-stub] to=%s subject=%s", user_id, email_subject)
+        if is_email_enabled():
+            udoc = await db.users.find_one(
+                {"user_id": user_id}, {"_id": 0, "email": 1}
+            )
+            if udoc and udoc.get("email"):
+                await send_email(udoc["email"], email_subject, email_html)
+        else:
+            log.info("[email-disabled] to=%s subject=%s", user_id, email_subject)
 
 
 @app.get("/api/notifications", response_model=List[Notification])
@@ -1625,19 +1981,36 @@ async def _startup():
     await db.disputes.create_index("status")
     await db.dispute_messages.create_index("id", unique=True)
     await db.dispute_messages.create_index("dispute_id")
+    await db.contact_submissions.create_index("id", unique=True)
+    await db.contact_submissions.create_index("created_at")
+    await db.contact_submissions.create_index("handled")
+    # Dedupe Stripe webhook deliveries — unique event id (or session+status fallback).
+    await db.webhook_events.create_index("key", unique=True)
+    await db.webhook_events.create_index("received_at")
+    # Password reset tokens — looked up by hash, expire automatically via TTL.
+    await db.password_resets.create_index("id", unique=True)
+    await db.password_resets.create_index("token_hash", unique=True)
+    await db.password_resets.create_index("user_id")
+    await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
 
-    # Seed admin
+    # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})
     if not existing:
-        await db.users.insert_one({
-            "user_id": f"user_admin_{uuid.uuid4().hex[:8]}",
-            "email": ADMIN_EMAIL,
-            "name": "WorkSoy Admin",
-            "picture": None,
-            "provider": "jwt",
-            "role": "admin",
-            "password_hash": _hash(ADMIN_PASSWORD),
-            "created_at": _now(),
-        })
-        log.info("Seeded admin user %s", ADMIN_EMAIL)
+        if not ADMIN_PASSWORD:
+            log.warning(
+                "Skipping admin seed: ADMIN_PASSWORD not set. "
+                "Set ADMIN_EMAIL and ADMIN_PASSWORD in the environment to seed."
+            )
+        else:
+            await db.users.insert_one({
+                "user_id": f"user_admin_{uuid.uuid4().hex[:8]}",
+                "email": ADMIN_EMAIL,
+                "name": "WorkSoy Admin",
+                "picture": None,
+                "provider": "jwt",
+                "role": "admin",
+                "password_hash": _hash(ADMIN_PASSWORD),
+                "created_at": _now(),
+            })
+            log.info("Seeded admin user %s", ADMIN_EMAIL)
     log.info("WorkSoy API ready")

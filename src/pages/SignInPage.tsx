@@ -7,6 +7,8 @@ import {
   useAuth,
 } from "@/lib/auth-client";
 import { apiLogin } from "@/lib/api";
+import { usePageMeta } from "@/lib/seo";
+import { track } from "@/lib/analytics";
 import { AuthShell } from "@/components/AuthShell";
 import {
   Button,
@@ -16,6 +18,12 @@ import {
 } from "@/components/primitives";
 
 export function SignInPage() {
+  usePageMeta({
+    title: "Sign in",
+    description: "Sign in to your WorkSoy account.",
+    path: "/signin",
+    robots: "noindex,nofollow",
+  });
   const navigate = useNavigate();
   const { setUser } = useAuth();
   const [email, setEmail] = useState("");
@@ -30,6 +38,7 @@ export function SignInPage() {
     try {
       const { user } = await apiLogin(email, password);
       setUser(user);
+      track("user.signed_in", { method: "email" });
       navigate({ to: "/dashboard" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
@@ -105,12 +114,12 @@ export function SignInPage() {
           <div>
             <div className="flex items-center justify-between">
               <FieldLabel htmlFor="password">Password</FieldLabel>
-              <button
-                type="button"
+              <Link
+                to="/forgot-password"
                 className="text-[12px] text-ink-60 hover:text-ink"
               >
                 Forgot?
-              </button>
+              </Link>
             </div>
             <FieldInput
               id="password"
@@ -167,11 +176,11 @@ export function SignInPage() {
 
         <p className="mt-8 text-[11.5px] leading-relaxed text-ink-60">
           By signing in you agree to our{" "}
-          <Link to="/contact" className="link-sweep text-ink">
+          <Link to="/legal/terms" className="link-sweep text-ink">
             Terms
           </Link>{" "}
           &amp;{" "}
-          <Link to="/contact" className="link-sweep text-ink">
+          <Link to="/legal/privacy" className="link-sweep text-ink">
             Privacy
           </Link>
           . WorkSoy never sells member data.

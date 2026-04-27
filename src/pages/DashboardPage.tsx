@@ -14,8 +14,14 @@ import {
   type ConversationSummary,
 } from "@/lib/api";
 import { Container, Eyebrow, LinkButton, Tag } from "@/components/primitives";
+import { usePageMeta } from "@/lib/seo";
 
 export function DashboardPage() {
+  usePageMeta({
+    title: "Dashboard",
+    path: "/dashboard",
+    robots: "noindex,nofollow",
+  });
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
   const [briefs, setBriefs] = useState<Brief[]>([]);

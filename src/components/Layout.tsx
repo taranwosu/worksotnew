@@ -7,6 +7,7 @@ import {
   User as UserIcon,
   MessageSquare,
   ArrowUpRight,
+  Shield,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
@@ -24,6 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession();
 
   const hasExpertProfile = session?.user?.role === "expert";
+  const amIAdmin = session?.user?.role === "admin";
   const unreadCount = 0;
 
   useEffect(() => {
@@ -488,12 +490,12 @@ function Footer() {
           </p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/legal/terms" className="hover:text-cream">
                 Terms
               </Link>
             </li>
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/legal/privacy" className="hover:text-cream">
                 Privacy
               </Link>
             </li>
@@ -503,7 +505,7 @@ function Footer() {
               </Link>
             </li>
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/legal/privacy" className="hover:text-cream">
                 Cookies
               </Link>
             </li>

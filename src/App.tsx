@@ -26,6 +26,10 @@ import { ContractPage } from "./pages/ContractPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
+import { TermsPage } from "./pages/TermsPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -35,7 +39,10 @@ const rootRoute = createRootRoute({
   ),
 });
 
-const make = (path: string, component: React.FC) =>
+// Generic helper preserves the path literal so tanstack-router's type
+// registry can see every route — without this the Link `to` prop only
+// accepts the handful of routes defined with explicit createRoute() calls.
+const make = <P extends string>(path: P, component: React.FC) =>
   createRoute({ getParentRoute: () => rootRoute, path, component });
 
 const routes = [
@@ -57,7 +64,11 @@ const routes = [
   make("/messages", MessagesPage),
   make("/admin/login", AdminLoginPage),
   make("/admin", AdminPage),
-];
+  make("/legal/terms", TermsPage),
+  make("/legal/privacy", PrivacyPage),
+  make("/forgot-password", ForgotPasswordPage),
+  make("/reset-password", ResetPasswordPage),
+] as const;
 
 const routeTree = rootRoute.addChildren(routes);
 
