@@ -1,0 +1,8 @@
+{
+  "name": "worksoy-frontend-wrapper",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd /app && /root/.bun/bin/bun run vite --host 0.0.0.0 --port 3000"
+  }
+}

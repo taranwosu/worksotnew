@@ -1,273 +1,200 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation } from "convex/react";
-import { Loader2, Plus, X, Check } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
-import { api } from "../../convex/_generated/api";
+import { createBrief } from "@/lib/api";
+import {
+  Container,
+  Eyebrow,
+  Button,
+  FieldInput,
+  FieldLabel,
+  FieldTextarea,
+  Tag,
+} from "@/components/primitives";
 
 const CATEGORIES = [
-  { id: "accounting", label: "Accounting & Finance" },
-  { id: "consulting", label: "Consulting & Strategy" },
-  { id: "design", label: "Design & Creative" },
-  { id: "engineering", label: "Engineering & Technical" },
-  { id: "compliance", label: "Compliance & Legal" },
-  { id: "marketing", label: "Marketing & Growth" },
+  "Accounting & Tax",
+  "Consulting",
+  "Design & UX",
+  "Engineering",
+  "Compliance",
+  "Project Management",
 ];
 
 export function PostRequestPage() {
-  const { data: session, isPending } = useSession();
   const navigate = useNavigate();
-  const createRequest = useMutation(api.mutations.createClientRequest);
-
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("consulting");
-  const [skills, setSkills] = useState<string[]>([]);
-  const [skillInput, setSkillInput] = useState("");
-  const [budgetMin, setBudgetMin] = useState(5000);
-  const [budgetMax, setBudgetMax] = useState(15000);
-  const [budgetType, setBudgetType] = useState("fixed");
-  const [engagementType, setEngagementType] = useState("project");
-  const [durationWeeks, setDurationWeeks] = useState(8);
-  const [startDate, setStartDate] = useState("");
-  const [location, setLocation] = useState("Remote");
-  const [remoteOk, setRemoteOk] = useState(true);
-  const [companyName, setCompanyName] = useState("");
-  const [contactEmail, setContactEmail] = useState(session?.user?.email ?? "");
-  const [saving, setSaving] = useState(false);
+  const { data: session } = useSession();
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    category: CATEGORIES[0],
+    required_skills: "",
+    budget_min: "3000",
+    budget_max: "8000",
+    duration_weeks: "8",
+    engagement_type: "fixed" as "fixed" | "hourly" | "retainer",
+    remote_ok: true,
+    location: "Remote",
+  });
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (isPending) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-      </div>
-    );
-  }
-
-  if (!session) {
-    navigate({ to: "/signin" });
-    return null;
-  }
-
-  const addSkill = () => {
-    if (skillInput.trim() && !skills.includes(skillInput.trim())) {
-      setSkills([...skills, skillInput.trim()]);
-      setSkillInput("");
-    }
-  };
+  const handleChange = <K extends keyof typeof form>(key: K, value: typeof form[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!session) {
+      navigate({ to: "/signin" });
+      return;
+    }
     setError(null);
-    setSaving(true);
+    setSubmitting(true);
     try {
-      await createRequest({
-        title,
-        description,
-        category,
-        requiredSkills: skills,
-        budgetMin,
-        budgetMax,
+      const brief = await createBrief({
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        required_skills: form.required_skills.split(",").map((s) => s.trim()).filter(Boolean),
+        budget_min: parseInt(form.budget_min, 10) || 0,
+        budget_max: parseInt(form.budget_max, 10) || 0,
         currency: "USD",
-        budgetType,
-        engagementType,
-        durationWeeks,
-        startDate: startDate || undefined,
-        location,
-        remoteOk,
-        complianceRequirements: [],
-        status: "open",
-        proposalCount: 0,
-        companyName: companyName || undefined,
-        contactEmail: contactEmail || undefined,
+        engagement_type: form.engagement_type,
+        duration_weeks: parseInt(form.duration_weeks, 10) || 4,
+        remote_ok: form.remote_ok,
+        location: form.location,
       });
-      navigate({ to: "/dashboard" });
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to post request");
-      setSaving(false);
+      navigate({ to: "/briefs/$briefId", params: { briefId: brief.id } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to post brief");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const canSubmit = title.trim() && description.length >= 50 && skills.length > 0 && budgetMax >= budgetMin;
-
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Post a project</h1>
-        <p className="mt-2 text-slate-600">Describe your project and we'll match you with the right experts.</p>
-      </div>
+    <div className="bg-cream pb-24 pt-16 md:pt-20">
+      <Container>
+        <div className="mx-auto max-w-2xl">
+          <Eyebrow index="§ 03" accent>Post a brief</Eyebrow>
+          <h1 className="mt-3 font-display text-[clamp(2rem,4vw,2.75rem)] font-medium leading-[1.05] tracking-[-0.02em] text-ink">
+            Tell us the work — we&rsquo;ll return three finalists.
+          </h1>
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-60">
+            A human reads every brief within the hour. Shortlist lands inside 48 hours.
+          </p>
 
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Project Details */}
-        <Section title="Project details">
-          <Field label="Project title">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Q1 Financial Model and Board Deck"
-              required
-              maxLength={120}
-              className="input"
-            />
-          </Field>
-          <Field label="Description" hint={`${description.length}/2000 — minimum 50 characters`}>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={6}
-              maxLength={2000}
-              required
-              placeholder="Describe the scope, deliverables, context, and any specific requirements..."
-              className="input resize-none"
-            />
-          </Field>
-          <Field label="Category">
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setCategory(cat.id)}
-                  className={`rounded-lg border-2 p-3 text-left text-sm font-medium transition-all ${
-                    category === cat.id
-                      ? "border-slate-900 bg-slate-50 text-slate-900"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
+          {error && (
+            <div role="alert" className="mt-6 rounded border border-rust/30 bg-rust/5 px-4 py-3 text-[13px] text-rust">
+              {error}
             </div>
-          </Field>
-          <Field label="Required skills" hint="Press Enter or + to add">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={skillInput}
-                onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
-                placeholder="e.g. Financial Modeling"
-                className="input flex-1"
+          )}
+
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            <div>
+              <FieldLabel htmlFor="title">Title</FieldLabel>
+              <FieldInput
+                id="title"
+                required
+                minLength={3}
+                value={form.title}
+                onChange={(e) => handleChange("title", e.target.value)}
+                placeholder="Fractional CFO for Series A SaaS"
               />
-              <button type="button" onClick={addSkill} className="rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
-                <Plus className="h-4 w-4" />
-              </button>
             </div>
-            {skills.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {skills.map((s) => (
-                  <span key={s} className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                    {s}
-                    <button type="button" onClick={() => setSkills(skills.filter((x) => x !== s))}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
+
+            <div>
+              <FieldLabel htmlFor="description">The work</FieldLabel>
+              <FieldTextarea
+                id="description"
+                required
+                minLength={20}
+                rows={6}
+                value={form.description}
+                onChange={(e) => handleChange("description", e.target.value)}
+                placeholder="Outline the scope, timeline, deliverables, and what success looks like."
+              />
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <FieldLabel htmlFor="category">Category</FieldLabel>
+                <select
+                  id="category"
+                  value={form.category}
+                  onChange={(e) => handleChange("category", e.target.value)}
+                  className="h-11 w-full rounded border border-ink-20 bg-white px-3 text-sm text-ink focus:border-ink focus:outline-none"
+                >
+                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                </select>
               </div>
-            )}
-          </Field>
-        </Section>
+              <div>
+                <FieldLabel htmlFor="skills">Key skills (comma separated)</FieldLabel>
+                <FieldInput
+                  id="skills"
+                  value={form.required_skills}
+                  onChange={(e) => handleChange("required_skills", e.target.value)}
+                  placeholder="Fundraising, Financial Modeling"
+                />
+              </div>
+            </div>
 
-        {/* Budget & Timeline */}
-        <Section title="Budget & timeline">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Budget type">
-              <select value={budgetType} onChange={(e) => setBudgetType(e.target.value)} className="input">
-                <option value="fixed">Fixed price</option>
-                <option value="hourly">Hourly</option>
-              </select>
-            </Field>
-            <Field label="Engagement type">
-              <select value={engagementType} onChange={(e) => setEngagementType(e.target.value)} className="input">
-                <option value="project">One-time project</option>
-                <option value="retainer">Ongoing retainer</option>
-                <option value="contract">Contract role</option>
-              </select>
-            </Field>
-            <Field label="Budget min (USD)">
-              <input type="number" min={0} value={budgetMin} onChange={(e) => setBudgetMin(parseInt(e.target.value) || 0)} className="input" />
-            </Field>
-            <Field label="Budget max (USD)">
-              <input type="number" min={0} value={budgetMax} onChange={(e) => setBudgetMax(parseInt(e.target.value) || 0)} className="input" />
-            </Field>
-            <Field label="Duration (weeks)">
-              <input type="number" min={1} value={durationWeeks} onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 1)} className="input" />
-            </Field>
-            <Field label="Desired start date (optional)">
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
-            </Field>
-          </div>
-        </Section>
+            <div className="grid gap-5 md:grid-cols-3">
+              <div>
+                <FieldLabel htmlFor="budget_min">Budget min (USD)</FieldLabel>
+                <FieldInput id="budget_min" type="number" min={0} value={form.budget_min} onChange={(e) => handleChange("budget_min", e.target.value)} />
+              </div>
+              <div>
+                <FieldLabel htmlFor="budget_max">Budget max (USD)</FieldLabel>
+                <FieldInput id="budget_max" type="number" min={0} value={form.budget_max} onChange={(e) => handleChange("budget_max", e.target.value)} />
+              </div>
+              <div>
+                <FieldLabel htmlFor="weeks">Duration (weeks)</FieldLabel>
+                <FieldInput id="weeks" type="number" min={1} max={104} value={form.duration_weeks} onChange={(e) => handleChange("duration_weeks", e.target.value)} />
+              </div>
+            </div>
 
-        {/* Location & Contact */}
-        <Section title="Location & contact">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Location">
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Remote / City, State" className="input" />
-            </Field>
-            <Field label="Company name (optional)">
-              <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="input" />
-            </Field>
-            <Field label="Contact email">
-              <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="input" />
-            </Field>
-          </div>
-          <label className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-            <input
-              type="checkbox"
-              checked={remoteOk}
-              onChange={(e) => setRemoteOk(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300"
-            />
-            <span className="font-medium text-slate-700">Remote work is acceptable</span>
-          </label>
-        </Section>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <FieldLabel htmlFor="engagement">Engagement type</FieldLabel>
+                <select
+                  id="engagement"
+                  value={form.engagement_type}
+                  onChange={(e) => handleChange("engagement_type", e.target.value as "fixed" | "hourly" | "retainer")}
+                  className="h-11 w-full rounded border border-ink-20 bg-white px-3 text-sm text-ink focus:border-ink focus:outline-none"
+                >
+                  <option value="fixed">Fixed-fee</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="retainer">Retainer</option>
+                </select>
+              </div>
+              <div>
+                <FieldLabel htmlFor="location">Location</FieldLabel>
+                <FieldInput id="location" value={form.location} onChange={(e) => handleChange("location", e.target.value)} placeholder="Remote, New York, NY, etc." />
+              </div>
+            </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-6">
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/dashboard" })}
-            className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit || saving}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-40"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {saving ? "Posting..." : "Post project"}
-          </button>
+            <div className="flex items-center gap-4">
+              <Tag tone="outline" size="sm">Preview</Tag>
+              <span className="text-[13px] text-ink-60">Only the WorkSoy matcher team sees the brief until experts apply.</span>
+            </div>
+
+            <Button
+              data-testid="post-brief-submit"
+              tone="ink"
+              size="lg"
+              type="submit"
+              disabled={submitting}
+              className="w-full"
+              iconLeft={submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              arrow={!submitting}
+            >
+              {submitting ? "Posting…" : "Post brief"}
+            </Button>
+          </form>
         </div>
-      </form>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-slate-900">{title}</h2>
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
-      {children}
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      </Container>
     </div>
   );
 }

@@ -20,10 +20,11 @@ import { SignUpPage } from "./pages/SignUpPage";
 import { ExpertOnboardingPage } from "./pages/ExpertOnboardingPage";
 import { PostRequestPage } from "./pages/PostRequestPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { MessagesPage } from "./pages/MessagesPage";
-import { ProjectWorkspacePage } from "./pages/ProjectWorkspacePage";
+import { BriefsPage } from "./pages/BriefsPage";
+import { BriefDetailPage } from "./pages/BriefDetailPage";
 import { ContractPage } from "./pages/ContractPage";
-import { VerificationPage } from "./pages/VerificationPage";
+import { MessagesPage } from "./pages/MessagesPage";
+import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
 
 const rootRoute = createRootRoute({
@@ -34,135 +35,31 @@ const rootRoute = createRootRoute({
   ),
 });
 
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  component: HomePage,
-});
+const make = (path: string, component: React.FC) =>
+  createRoute({ getParentRoute: () => rootRoute, path, component });
 
-const expertsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/experts",
-  component: ExpertsPage,
-});
+const routes = [
+  make("/", HomePage),
+  make("/experts", ExpertsPage),
+  createRoute({ getParentRoute: () => rootRoute, path: "/experts/$expertId", component: ExpertDetailPage }),
+  make("/how-it-works", HowItWorksPage),
+  make("/pricing", PricingPage),
+  make("/for-experts", ForExpertsPage),
+  make("/contact", ContactPage),
+  make("/signin", SignInPage),
+  make("/signup", SignUpPage),
+  make("/onboarding/expert", ExpertOnboardingPage),
+  make("/post-request", PostRequestPage),
+  make("/dashboard", DashboardPage),
+  make("/briefs", BriefsPage),
+  createRoute({ getParentRoute: () => rootRoute, path: "/briefs/$briefId", component: BriefDetailPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/contracts/$contractId", component: ContractPage }),
+  make("/messages", MessagesPage),
+  make("/admin/login", AdminLoginPage),
+  make("/admin", AdminPage),
+];
 
-const expertDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/experts/$expertId",
-  component: ExpertDetailPage,
-});
-
-const howItWorksRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/how-it-works",
-  component: HowItWorksPage,
-});
-
-const pricingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/pricing",
-  component: PricingPage,
-});
-
-const forExpertsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/for-experts",
-  component: ForExpertsPage,
-});
-
-const contactRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/contact",
-  component: ContactPage,
-});
-
-const signInRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/signin",
-  component: SignInPage,
-});
-
-const signUpRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/signup",
-  component: SignUpPage,
-});
-
-const expertOnboardingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/onboarding/expert",
-  component: ExpertOnboardingPage,
-});
-
-const postRequestRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/post-request",
-  component: PostRequestPage,
-});
-
-const dashboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/dashboard",
-  component: DashboardPage,
-});
-
-const messagesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/messages",
-  component: MessagesPage,
-  validateSearch: (
-    search: Record<string, unknown>
-  ): { id?: string; proposal?: string } => {
-    const out: { id?: string; proposal?: string } = {};
-    if (typeof search.id === "string") out.id = search.id;
-    if (typeof search.proposal === "string") out.proposal = search.proposal;
-    return out;
-  },
-});
-
-const projectWorkspaceRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/workspace/$proposalId",
-  component: ProjectWorkspacePage,
-});
-
-const contractRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/contracts/$contractId",
-  component: ContractPage,
-});
-
-const verificationRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/verification",
-  component: VerificationPage,
-});
-
-const adminRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin",
-  component: AdminPage,
-});
-
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  expertsRoute,
-  expertDetailRoute,
-  howItWorksRoute,
-  pricingRoute,
-  forExpertsRoute,
-  contactRoute,
-  signInRoute,
-  signUpRoute,
-  expertOnboardingRoute,
-  postRequestRoute,
-  dashboardRoute,
-  messagesRoute,
-  projectWorkspaceRoute,
-  contractRoute,
-  verificationRoute,
-  adminRoute,
-]);
+const routeTree = rootRoute.addChildren(routes);
 
 const router = createRouter({
   routeTree,
@@ -175,8 +72,5 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const App: React.FC = () => {
-  return <RouterProvider router={router} />;
-};
-
+const App: React.FC = () => <RouterProvider router={router} />;
 export default App;

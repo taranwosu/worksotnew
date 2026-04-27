@@ -29,6 +29,6 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     strictPort: false,
-    allowedHosts: [".modal.host", "shipper.now", "localhost", ".localhost"],
+    allowedHosts: [".modal.host", "shipper.now", "localhost", ".localhost", ".preview.emergentagent.com", ".preview.emergentcf.cloud", ".emergentagent.com", ".emergentcf.cloud"],
   },
 });
