@@ -219,4 +219,47 @@ export default defineSchema({
     .index("by_client", ["clientUserId"])
     .index("by_expert", ["expertUserId"])
     .index("by_status", ["status"]),
+
+  // Verification requests (identity checks and skill-badge applications).
+  // Reviewed by admins. Identity approval flips expertProfiles.isVerified.
+  verificationRequests: defineTable({
+    userId: v.string(),
+    expertProfileId: v.optional(v.id("expertProfiles")),
+    type: v.string(), // "identity" | "skill"
+    status: v.string(), // "pending" | "approved" | "rejected"
+    skillName: v.optional(v.string()),
+    note: v.optional(v.string()),
+    documents: v.array(
+      v.object({
+        storageId: v.id("_storage"),
+        fileName: v.string(),
+        label: v.optional(v.string()),
+        contentType: v.optional(v.string()),
+        size: v.optional(v.number()),
+      })
+    ),
+    submittedAt: v.number(),
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.string()),
+    reviewNote: v.optional(v.string()),
+    // External provider ids for later Persona / Stripe Identity integration.
+    providerRequestId: v.optional(v.string()),
+    providerStatus: v.optional(v.string()),
+  })
+    .index("by_user", ["userId", "submittedAt"])
+    .index("by_status", ["status", "submittedAt"])
+    .index("by_type", ["type", "status"]),
+
+  // Awarded skill badges displayed on an expert's profile.
+  skillBadges: defineTable({
+    expertProfileId: v.id("expertProfiles"),
+    userId: v.string(),
+    name: v.string(),
+    issuedBy: v.string(), // admin user id
+    evidenceUrl: v.optional(v.string()),
+    note: v.optional(v.string()),
+  })
+    .index("by_expertProfile", ["expertProfileId"])
+    .index("by_user", ["userId"])
+    .index("by_name", ["expertProfileId", "name"]),
 });
