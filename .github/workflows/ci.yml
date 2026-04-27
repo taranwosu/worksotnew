@@ -31,9 +31,24 @@ jobs:
       - name: TypeScript check
         # Invoke the locally-installed tsc directly. `bun x tsc` would
         # otherwise be sensitive to bun's version-dependent path resolution.
+        # Capture output to step summary so failures are visible without
+        # having to drill into the raw log.
         run: |
           ./node_modules/.bin/tsc --version
-          ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit
+          set +e
+          ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit 2>&1 | tee tsc.log
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## TypeScript check"
+            echo ""
+            echo "Exit code: \`$status\`"
+            echo ""
+            echo '```'
+            head -200 tsc.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
   backend:
     name: Backend (syntax + lint)
