@@ -39,7 +39,10 @@ const rootRoute = createRootRoute({
   ),
 });
 
-const make = (path: string, component: React.FC) =>
+// Generic helper preserves the path literal so tanstack-router's type
+// registry can see every route — without this the Link `to` prop only
+// accepts the handful of routes defined with explicit createRoute() calls.
+const make = <P extends string>(path: P, component: React.FC) =>
   createRoute({ getParentRoute: () => rootRoute, path, component });
 
 const routes = [
@@ -65,7 +68,7 @@ const routes = [
   make("/legal/privacy", PrivacyPage),
   make("/forgot-password", ForgotPasswordPage),
   make("/reset-password", ResetPasswordPage),
-];
+] as const;
 
 const routeTree = rootRoute.addChildren(routes);
 
