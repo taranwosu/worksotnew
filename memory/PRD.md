@@ -24,14 +24,16 @@ Build a premium expert marketplace (Toptal-style) with: browseable expert direct
 - 25 seeded experts ship as pre-approved so the marketplace looks alive on day 1.
 
 ## What's been implemented (2026-01)
-- **Vetting gauntlet (NEW 2026-01-25)**: state machine on `vetting_applications`, 11 endpoints (5 expert + 6 admin), file uploads on test-project submission, history log per application.
-- **Hard gate (NEW)**: `/api/experts` filters by stage + verified; `/api/briefs/{id}/proposals` returns 403 with "must complete WorkSoy vetting" detail.
-- **Earnings + Invoices (NEW)**: `GET /api/me/earnings` (lifetime_released, in_escrow, pending) and `GET /api/me/invoices` (one per released milestone with platform fee/net split).
-- **Shortlists (NEW)**: `GET/POST/DELETE /api/me/shortlists` with composite-unique index.
-- **Saved searches (NEW)**: full CRUD on `/api/me/saved-searches`.
-- **Emailit (NEW)**: third email provider in `mailer.py`, preferred over SendGrid/SMTP when configured.
-- **Frontend pages**: `/vetting` (5-stage wizard with progress strip + per-stage panels + status log + approved/rejected terminal panels), Admin "Vetting pipeline" tab with 6 stage queues + advance/reject controls + ScreeningEditor + AssignTestProjectForm + TestProject reviewer, Dashboard Earnings + Invoices + Saved-experts cards, Experts page heart-shortlist overlay on every card, "Vetting status" link in profile menu, "Continue vetting" banner on dashboard.
-- **Pre-existing (kept)**: auth (JWT + Google OAuth), experts directory, brief lifecycle, proposals, milestone escrow, messages w/ files, reviews, disputes, notifications.
+- **Public transparency page (NEW 2026-01-25)**: `/process` — hero with live acceptance % highlighted in sun-yellow, four-tile live stats panel, horizontal funnel bars (Applied → 5 stages → Approved/Rejected) with absolute counts, five "You show / We check" cards, promise section, FAQ, dual CTAs. Indexable. Backed by public endpoint `GET /api/process/stats` (no auth, anonymised aggregates only).
+- **Navbar polish (NEW 2026-01-25)**: "Vetting" link added at position 02 in the main nav; in-progress experts also see a sun-tinted "Continue vetting" pill (with Clock icon) between "Browse projects" and the bell.
+- **Onboarding button fix (NEW 2026-01-25)**: Save button now correctly reads "Save & enter vetting" (was stale "Publish profile" from a missed earlier edit).
+- **Vetting gauntlet (2026-01-25)**: state machine on `vetting_applications`, 11 endpoints (5 expert + 6 admin), file uploads on test-project submission, history log per application.
+- **Hard gate**: `/api/experts` filters by stage + verified; `/api/briefs/{id}/proposals` returns 403 with "must complete WorkSoy vetting" detail.
+- **Earnings + Invoices**: `GET /api/me/earnings` (lifetime_released, in_escrow, pending) and `GET /api/me/invoices` (one per released milestone with platform fee/net split).
+- **Shortlists**: `GET/POST/DELETE /api/me/shortlists` with composite-unique index.
+- **Saved searches**: full CRUD on `/api/me/saved-searches`.
+- **Emailit**: third email provider in `mailer.py`, preferred over SendGrid/SMTP when configured.
+- **Frontend pages**: `/vetting` (5-stage wizard), Admin "Vetting pipeline" tab with 6 stage queues, Dashboard Earnings + Invoices + Saved-experts cards, Experts page heart-shortlist overlay, "Vetting status" link in profile menu.
 
 ## Test status (2026-01-25)
 - Backend: **29/29 passing** (`/app/backend/tests/test_worksoy_vetting.py`).

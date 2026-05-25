@@ -8,9 +8,11 @@ import {
   MessageSquare,
   ArrowUpRight,
   Shield,
+  Clock,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
+import { getMyVetting } from "@/lib/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hasExpertProfile = session?.user?.role === "expert";
   const amIAdmin = session?.user?.role === "admin";
   const unreadCount = 0;
+  const [vettingStage, setVettingStage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasExpertProfile) {
+      setVettingStage(null);
+      return;
+    }
+    let cancelled = false;
+    getMyVetting()
+      .then((v) => { if (!cancelled) setVettingStage(v.stage); })
+      .catch(() => { if (!cancelled) setVettingStage(null); });
+    return () => { cancelled = true; };
+  }, [hasExpertProfile, session?.user?._id]);
+
+  const vettingInProgress =
+    !!vettingStage && !["approved", "rejected", "not_started"].includes(vettingStage);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -58,9 +76,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const navLinks = [
     { to: "/experts", label: "Network", index: "01" },
-    { to: "/how-it-works", label: "How we work", index: "02" },
-    { to: "/pricing", label: "Pricing", index: "03" },
-    { to: "/for-experts", label: "For experts", index: "04" },
+    { to: "/process", label: "Vetting", index: "02" },
+    { to: "/how-it-works", label: "How we work", index: "03" },
+    { to: "/pricing", label: "Pricing", index: "04" },
+    { to: "/for-experts", label: "For experts", index: "05" },
   ];
 
   const userName =
@@ -131,6 +150,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   {hasExpertProfile ? "Browse projects" : "Post a brief"}
                 </LinkButton>
+
+                {vettingInProgress && (
+                  <Link
+                    to="/vetting"
+                    data-testid="nav-continue-vetting"
+                    className="inline-flex items-center gap-1.5 rounded-pill border border-sun bg-sun/15 px-3 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-sun/25"
+                  >
+                    <Clock className="h-3.5 w-3.5" strokeWidth={2} />
+                    Continue vetting
+                  </Link>
+                )}
 
                 <NotificationsBell />
 

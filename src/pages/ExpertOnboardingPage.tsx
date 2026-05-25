@@ -157,7 +157,7 @@ export function ExpertOnboardingPage() {
               <FieldTextarea id="bio" required minLength={30} rows={6} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="Who you help, how you help, and the outcomes you produce." />
             </div>
             <Button data-testid="onboard-submit" tone="ink" size="lg" type="submit" disabled={saving} className="w-full" iconLeft={saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} arrow={!saving}>
-              {saving ? "Saving…" : "Publish profile"}
+              {saving ? "Saving…" : "Save & enter vetting"}
             </Button>
           </form>
         </div>

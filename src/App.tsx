@@ -31,6 +31,7 @@ import { PrivacyPage } from "./pages/PrivacyPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { VettingPage } from "./pages/VettingPage";
+import { ProcessPage } from "./pages/ProcessPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -70,6 +71,7 @@ const routes = [
   make("/forgot-password", ForgotPasswordPage),
   make("/reset-password", ResetPasswordPage),
   make("/vetting", VettingPage),
+  make("/process", ProcessPage),
 ] as const;
 
 const routeTree = rootRoute.addChildren(routes);

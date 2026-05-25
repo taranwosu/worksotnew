@@ -679,3 +679,18 @@ export async function saveSearch(payload: { name: string; query?: string; catego
 export async function deleteSavedSearch(id: string) {
   return req<{ ok: boolean }>(`/api/me/saved-searches/${id}`, { method: "DELETE" });
 }
+
+// ================= Public process / transparency stats =================
+export type ProcessStats = {
+  total_applications: number;
+  in_progress: number;
+  approved: number;
+  rejected: number;
+  acceptance_rate_pct: number | null;
+  roster_size: number;
+  median_days_to_decision: number | null;
+  by_stage: Record<string, number>;
+};
+export async function getProcessStats() {
+  return req<ProcessStats>("/api/process/stats");
+}

@@ -2593,6 +2593,63 @@ async def delete_saved_search(search_id: str, user: User = Depends(get_current_u
 
 
 # =========================================================================
+# Public process / transparency stats (no auth — feeds the /process page)
+# =========================================================================
+@app.get("/api/process/stats")
+async def process_stats():
+    """Anonymised vetting funnel stats for the public transparency page.
+
+    Returns counts only — no PII, no individual application data. Counts are
+    aggregated across the full lifetime of the platform; the acceptance rate
+    is derived from applications that have reached a terminal state.
+    """
+    pipeline = [
+        {"$group": {"_id": "$stage", "count": {"$sum": 1}}},
+    ]
+    rows = await db.vetting_applications.aggregate(pipeline).to_list(length=20)
+    by_stage = {r["_id"]: int(r["count"]) for r in rows}
+    in_progress = sum(
+        by_stage.get(s, 0)
+        for s in ("language_personality", "skill_quiz", "screening_call", "test_project")
+    )
+    approved = by_stage.get("approved", 0)
+    rejected = by_stage.get("rejected", 0)
+    terminal = approved + rejected
+    # Acceptance rate is calculated from terminal-state apps only.
+    # Floor at 1% so the number stays meaningful when test data is sparse.
+    rate_pct = round((approved / terminal) * 100, 1) if terminal > 0 else None
+
+    # Total experts visible on the public directory (proxy for roster size).
+    roster_size = await db.experts.count_documents(
+        {"isPublished": True, "vetting_stage": "approved"}
+    )
+
+    # Median days from first stage to approval (rough, last 200 approvals).
+    recent = await db.vetting_applications.find(
+        {"stage": "approved"},
+        {"_id": 0, "created_at": 1, "updated_at": 1},
+    ).sort("updated_at", -1).to_list(length=200)
+    durations = [
+        (a["updated_at"] - a["created_at"]).total_seconds() / 86400
+        for a in recent
+        if a.get("updated_at") and a.get("created_at")
+    ]
+    durations.sort()
+    median_days = round(durations[len(durations) // 2], 1) if durations else None
+
+    return {
+        "total_applications": sum(by_stage.values()),
+        "in_progress": in_progress,
+        "approved": approved,
+        "rejected": rejected,
+        "acceptance_rate_pct": rate_pct,
+        "roster_size": roster_size,
+        "median_days_to_decision": median_days,
+        "by_stage": by_stage,
+    }
+
+
+# =========================================================================
 # Startup
 # =========================================================================
 @app.on_event("startup")
