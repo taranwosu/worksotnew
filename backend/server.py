@@ -2595,19 +2595,29 @@ async def delete_saved_search(search_id: str, user: User = Depends(get_current_u
 # =========================================================================
 # Public process / transparency stats (no auth — feeds the /process page)
 # =========================================================================
+# Minimum sample sizes before we promote internal stats to the public page.
+# Below these thresholds we return ``null`` and the marketing page falls back
+# to its aspirational defaults (e.g. "≈ 3%").
+MIN_DECISIONS_FOR_RATE = int(os.environ.get("PROCESS_MIN_DECISIONS", "30"))
+MIN_REACHED_FOR_STAGE_RATE = int(os.environ.get("PROCESS_MIN_STAGE_REACHED", "10"))
+
+
 @app.get("/api/process/stats")
 async def process_stats():
     """Anonymised vetting funnel stats for the public transparency page.
 
-    Returns counts only — no PII, no individual application data. Counts are
-    aggregated across the full lifetime of the platform; the acceptance rate
-    is derived from applications that have reached a terminal state.
+    All counts are honest aggregates — but any *rate* that doesn't yet have a
+    statistically defensible sample is suppressed (returned as ``null``).
+    The frontend renders an aspirational fallback in that case.
     """
-    pipeline = [
-        {"$group": {"_id": "$stage", "count": {"$sum": 1}}},
-    ]
-    rows = await db.vetting_applications.aggregate(pipeline).to_list(length=20)
-    by_stage = {r["_id"]: int(r["count"]) for r in rows}
+    apps = await db.vetting_applications.find(
+        {}, {"_id": 0, "stage": 1, "history": 1, "created_at": 1, "updated_at": 1}
+    ).to_list(length=10000)
+
+    by_stage: dict[str, int] = {}
+    for a in apps:
+        by_stage[a["stage"]] = by_stage.get(a["stage"], 0) + 1
+
     in_progress = sum(
         by_stage.get(s, 0)
         for s in ("language_personality", "skill_quiz", "screening_call", "test_project")
@@ -2615,27 +2625,58 @@ async def process_stats():
     approved = by_stage.get("approved", 0)
     rejected = by_stage.get("rejected", 0)
     terminal = approved + rejected
-    # Acceptance rate is calculated from terminal-state apps only.
-    # Floor at 1% so the number stays meaningful when test data is sparse.
-    rate_pct = round((approved / terminal) * 100, 1) if terminal > 0 else None
 
-    # Total experts visible on the public directory (proxy for roster size).
+    # Overall acceptance rate — only public once we have enough decisions.
+    rate_pct = (
+        round((approved / terminal) * 100, 1)
+        if terminal >= MIN_DECISIONS_FOR_RATE
+        else None
+    )
+
+    # Per-stage pass rates derived from each application's history. For a given
+    # stage S, "reached" = applications whose journey ever touched S; "passed" =
+    # applications that subsequently reached *any* later stage (incl. approved).
+    # Suppressed below the minimum sample so we don't publish noise.
+    ordered_stages = ["language_personality", "skill_quiz", "screening_call", "test_project"]
+    stage_pass_rates: dict[str, Optional[float]] = {}
+    stage_reached: dict[str, int] = {}
+    for i, s in enumerate(ordered_stages):
+        later = set(ordered_stages[i + 1 :]) | {"approved"}
+        reached = 0
+        passed = 0
+        for a in apps:
+            touched = {h.get("stage") for h in a.get("history", []) if h}
+            touched.add(a["stage"])
+            if s in touched:
+                reached += 1
+                if touched & later:
+                    passed += 1
+        stage_reached[s] = reached
+        stage_pass_rates[s] = (
+            round((passed / reached) * 100, 1)
+            if reached >= MIN_REACHED_FOR_STAGE_RATE
+            else None
+        )
+
     roster_size = await db.experts.count_documents(
         {"isPublished": True, "vetting_stage": "approved"}
     )
 
-    # Median days from first stage to approval (rough, last 200 approvals).
-    recent = await db.vetting_applications.find(
-        {"stage": "approved"},
-        {"_id": 0, "created_at": 1, "updated_at": 1},
-    ).sort("updated_at", -1).to_list(length=200)
-    durations = [
-        (a["updated_at"] - a["created_at"]).total_seconds() / 86400
-        for a in recent
-        if a.get("updated_at") and a.get("created_at")
-    ]
-    durations.sort()
-    median_days = round(durations[len(durations) // 2], 1) if durations else None
+    # Median days from first stage to approval (last 200 approvals) — same
+    # threshold rule as the headline acceptance rate.
+    median_days = None
+    if approved >= MIN_DECISIONS_FOR_RATE:
+        durations: list[float] = []
+        for a in apps:
+            if a["stage"] != "approved":
+                continue
+            if a.get("updated_at") and a.get("created_at"):
+                durations.append(
+                    (a["updated_at"] - a["created_at"]).total_seconds() / 86400
+                )
+        durations.sort()
+        if durations:
+            median_days = round(durations[len(durations) // 2], 1)
 
     return {
         "total_applications": sum(by_stage.values()),
@@ -2645,6 +2686,11 @@ async def process_stats():
         "acceptance_rate_pct": rate_pct,
         "roster_size": roster_size,
         "median_days_to_decision": median_days,
+        "decision_sample_size": terminal,
+        "min_sample_size": MIN_DECISIONS_FOR_RATE,
+        "stage_pass_rates": stage_pass_rates,
+        "stage_reached": stage_reached,
+        "min_stage_reached": MIN_REACHED_FOR_STAGE_RATE,
         "by_stage": by_stage,
     }
 

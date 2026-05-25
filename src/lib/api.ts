@@ -689,6 +689,11 @@ export type ProcessStats = {
   acceptance_rate_pct: number | null;
   roster_size: number;
   median_days_to_decision: number | null;
+  decision_sample_size: number;
+  min_sample_size: number;
+  stage_pass_rates: Record<string, number | null>;
+  stage_reached: Record<string, number>;
+  min_stage_reached: number;
   by_stage: Record<string, number>;
 };
 export async function getProcessStats() {

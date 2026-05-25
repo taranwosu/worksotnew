@@ -28,7 +28,6 @@ const STAGES = [
     label: "Language & personality",
     icon: Languages,
     duration: "10 min",
-    pass_rate: "62%",
     description:
       "A written screen — communication style, working timezone, weekly availability, and a self-rated English level. We're looking for clarity under pressure, not native fluency.",
     you_show: [
@@ -45,7 +44,6 @@ const STAGES = [
     label: "Skill questionnaire",
     icon: Brain,
     duration: "45 min",
-    pass_rate: "38%",
     description:
       "A case study of a recent engagement — your role, the outcome, and the trade-offs you defended. Plus your methodology for the first seven days of any new client relationship.",
     you_show: [
@@ -64,7 +62,6 @@ const STAGES = [
     label: "Live screening call",
     icon: PhoneCall,
     duration: "30 min",
-    pass_rate: "55%",
     description:
       "One of our senior matchers joins a 30-minute video call. No tricks, no whiteboarding — a conversation about your last three engagements, references, and the kind of work you want next.",
     you_show: [
@@ -82,7 +79,6 @@ const STAGES = [
     label: "Paid test project",
     icon: Hammer,
     duration: "1–2 weeks",
-    pass_rate: "71%",
     description:
       "A real, scoped engagement — paid at your stated project rate. We've stockpiled briefs from past clients who agreed to be re-anonymised for screening. Your deliverable is reviewed by a two-person panel.",
     you_show: [
@@ -100,7 +96,6 @@ const STAGES = [
     label: "Approved · on the roster",
     icon: Award,
     duration: "—",
-    pass_rate: null,
     description:
       "Your profile goes public, the Verified badge unlocks, and matching briefs are routed to you first. We do an informal review of your first three engagements; after that, you ride on client reviews.",
     you_show: [
@@ -170,7 +165,8 @@ export function ProcessPage() {
 
 function Hero({ stats, loading }: { stats: ProcessStats | null; loading: boolean }) {
   const rate = stats?.acceptance_rate_pct;
-  const headlinePct = rate !== null && rate !== undefined ? `${rate}%` : "≈ 3%";
+  const hasRealRate = rate !== null && rate !== undefined;
+  const headlinePct = hasRealRate ? `${rate}%` : "≈ 3%";
   return (
     <section className="relative overflow-hidden border-b border-ink-12 bg-cream pt-20 md:pt-28">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_-10%,rgba(232,184,76,0.18),transparent_55%)]" />
@@ -185,6 +181,14 @@ function Hero({ stats, loading }: { stats: ProcessStats | null; loading: boolean
             <p className="mt-6 max-w-xl text-[16.5px] leading-[1.55] text-ink-60">
               Toptal-style hard-gated marketplaces are a brand promise more than a product. We thought we'd show our working — the actual five-stage gauntlet, with live acceptance rate and median decision time, updated nightly.
             </p>
+            {!loading && !hasRealRate && (
+              <p
+                data-testid="acceptance-rate-fallback"
+                className="mt-4 max-w-xl text-[12.5px] italic leading-snug text-ink-60"
+              >
+                ≈ 3% is our target. We publish the live number once we've made at least {stats?.min_sample_size ?? 30} decisions — currently {stats?.decision_sample_size ?? 0}, so it would still be statistical noise.
+              </p>
+            )}
             <div className="mt-9 flex flex-wrap gap-3">
               <LinkButton to="/onboarding/expert" tone="ink" size="lg" arrow data-testid="process-cta-apply">
                 Apply to the roster
@@ -202,15 +206,15 @@ function Hero({ stats, loading }: { stats: ProcessStats | null; loading: boolean
 }
 
 function HeroStats({ stats, loading }: { stats: ProcessStats | null; loading: boolean }) {
+  const hasRate = stats?.acceptance_rate_pct !== null && stats?.acceptance_rate_pct !== undefined;
+  const hasMedian = stats?.median_days_to_decision !== null && stats?.median_days_to_decision !== undefined;
   const cells = [
     {
-      kicker: "Lifetime acceptance",
-      value: loading
-        ? "—"
-        : stats?.acceptance_rate_pct !== null && stats?.acceptance_rate_pct !== undefined
-        ? `${stats.acceptance_rate_pct}%`
-        : "≈ 3%",
-      foot: "Approved / (approved + rejected)",
+      kicker: "Acceptance rate",
+      value: loading ? "—" : hasRate ? `${stats?.acceptance_rate_pct}%` : "≈ 3%",
+      foot: hasRate
+        ? `Approved / decisions · n=${(stats?.decision_sample_size ?? 0).toLocaleString()}`
+        : `Target · published when n ≥ ${stats?.min_sample_size ?? 30}`,
     },
     {
       kicker: "On the roster today",
@@ -224,12 +228,10 @@ function HeroStats({ stats, loading }: { stats: ProcessStats | null; loading: bo
     },
     {
       kicker: "Median decision",
-      value: loading
-        ? "—"
-        : stats?.median_days_to_decision !== null && stats?.median_days_to_decision !== undefined
-        ? `${stats.median_days_to_decision} days`
-        : "—",
-      foot: "Apply → approval, last 200",
+      value: loading ? "—" : hasMedian ? `${stats?.median_days_to_decision} days` : "3–5 weeks",
+      foot: hasMedian
+        ? "Apply → approval, last 200"
+        : "Typical · published once sample grows",
     },
   ];
   return (
