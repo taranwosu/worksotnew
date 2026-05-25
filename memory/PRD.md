@@ -1,49 +1,59 @@
 # WorkSoy — PRD
 
-## Problem
-Premium curated marketplace for senior project-based work (accountants, consultants, designers, engineers, compliance, PMs). End-to-end: brief → proposals → matched hire → contract with milestone escrow → messaging + files → review + dispute resolution.
+## Problem statement
+Build a premium expert marketplace (Toptal-style) with: browseable expert directory, brief posting + proposals, milestone-escrow contracts (Stripe), in-app messaging with attachments, reviews, dispute resolution, admin console, transactional email, and — most distinctively — a **5-stage vetting gauntlet** that hard-gates the public roster so only ~3% of applicants are surfaced to clients.
+
+## Architecture
+- **Backend**: FastAPI (Python 3.11) + Motor (async MongoDB) + Stripe + JWT auth + Emergent Google OAuth (Better-Auth flow).
+  - Single-file app: `/app/backend/server.py` (~2700 LOC; flagged for future split). Mailer in `/app/backend/mailer.py`. Seed in `/app/backend/seed.py`.
+- **Frontend**: Vite + React 19 + TypeScript + TanStack Router + Tailwind 4. Source under `/app/src`. Vite reads env from `/app/frontend/.env` (configured via `envDir`).
+- **Storage**: MongoDB (collections: users, experts, briefs, proposals, contracts, milestones, files, conversations, messages, reviews, disputes, notifications, password_resets, **vetting_applications, test_projects, shortlists, saved_searches**).
+- **Email**: Emailit (https://emailit.com/docs/) via POST `https://api.emailit.com/v2/emails`; SendGrid + SMTP retained as fallbacks. Mailer no-ops cleanly if `EMAIL_FROM` is unset.
+- **Payments**: Stripe milestone escrow (released → invoice). 15% platform fee derived in invoice payload.
 
 ## Personas
-- **Client** — COO, Head of Finance, Ops lead hiring a senior contractor fast
-- **Expert** — fractional CFO, ex-MBB consultant, senior designer/engineer, PE, compliance specialist
-- **Admin** — WorkSoy operator; vets experts, audits briefs/contracts, resolves disputes
+1. **Client** — posts briefs, reviews proposals, opens contracts, releases milestones, shortlists experts.
+2. **Expert** — passes the 5-stage gauntlet, browses open briefs, submits proposals, delivers via milestones, downloads invoices.
+3. **Admin** — runs the vetting pipeline (advance/reject/assign-test-project), moderates disputes, manages experts.
 
-## Tech
-- Frontend: React 19 + Vite + TypeScript + TanStack Router + Tailwind v4 (Ink/Cream/Sun editorial design)
-- Backend: FastAPI + MongoDB (motor) — single `server.py` (~1500 LOC, to be split into routers)
-- Auth: JWT + Emergent-managed Google OAuth
-- Payments: Stripe Checkout via `emergentintegrations` (test key `sk_test_emergent`)
-- Notifications: in-app (bell + polling every 30s); email = **stubbed** (logs only; Resend wiring deferred)
-- File storage: local disk `/app/backend/uploads/` (25MB limit, scope-auth'd)
-- Supervisor-managed (backend :8001, frontend :3000)
+## Core requirements (static)
+- Public expert directory only shows vetting_stage="approved" experts.
+- Only approved experts can submit proposals (hard 403 with vetting-aware error message).
+- Stage transitions: `not_started → language_personality → skill_quiz → screening_call → test_project → approved | rejected`.
+- Each stage transition fires an in-app notification + transactional email (when Emailit/EMAIL_FROM set).
+- 25 seeded experts ship as pre-approved so the marketplace looks alive on day 1.
 
-## Status (Apr 2026 — iteration 3 complete)
+## What's been implemented (2026-01)
+- **Vetting gauntlet (NEW 2026-01-25)**: state machine on `vetting_applications`, 11 endpoints (5 expert + 6 admin), file uploads on test-project submission, history log per application.
+- **Hard gate (NEW)**: `/api/experts` filters by stage + verified; `/api/briefs/{id}/proposals` returns 403 with "must complete WorkSoy vetting" detail.
+- **Earnings + Invoices (NEW)**: `GET /api/me/earnings` (lifetime_released, in_escrow, pending) and `GET /api/me/invoices` (one per released milestone with platform fee/net split).
+- **Shortlists (NEW)**: `GET/POST/DELETE /api/me/shortlists` with composite-unique index.
+- **Saved searches (NEW)**: full CRUD on `/api/me/saved-searches`.
+- **Emailit (NEW)**: third email provider in `mailer.py`, preferred over SendGrid/SMTP when configured.
+- **Frontend pages**: `/vetting` (5-stage wizard with progress strip + per-stage panels + status log + approved/rejected terminal panels), Admin "Vetting pipeline" tab with 6 stage queues + advance/reject controls + ScreeningEditor + AssignTestProjectForm + TestProject reviewer, Dashboard Earnings + Invoices + Saved-experts cards, Experts page heart-shortlist overlay on every card, "Vetting status" link in profile menu, "Continue vetting" banner on dashboard.
+- **Pre-existing (kept)**: auth (JWT + Google OAuth), experts directory, brief lifecycle, proposals, milestone escrow, messages w/ files, reviews, disputes, notifications.
 
-### ✅ Implemented
-- Editorial redesign + 25 seeded experts (3 pending vetting) + seeded admin
-- Full hiring loop: post brief → browse → apply → accept → contract with 25%/75% milestones + auto conversation
-- Stripe escrow flow: fund milestone → submit → release (contract auto-completes when all milestones released)
-- **In-app notifications**: bell + badge + panel with polling; triggers on proposal.new/accepted/rejected, milestone.submitted/released, dispute.opened/resolved, review.received, contract.completed
-- **File uploads**: local disk with per-scope auth (conversation / contract / milestone); Paperclip attach in Messages renders file cards with download
-- **Reviews** (post-completion only): 1–5★ + comment; one per reviewer per contract; auto-recomputes `rating` and `reviewCount` on expert profile; public on `/experts/{id}/reviews`
-- **Disputes with full thread**: Either party can file on a funded/submitted milestone → status becomes `disputed`; **each dispute has a message thread + evidence uploads** (files scoped to `dispute_id`, rendered as download cards); admin resolves inline from the thread via `release` or `refund`; refund inserts a negative audit row in `payment_transactions` with `kind="refund"`, `origin_session_id`, `dispute_id`, `resolved_by_admin_id`; every dispute message also fires `dispute.message` notifications to the other parties + admins
-- **Public expert profile** now lists real reviews via `/api/experts/{id}/reviews` (empty state when none)
-- **Admin console** with 4 tabs: Vetting queue · All experts · Briefs · Disputes (resolve)
-- Graceful Stripe status fallback (cached tx state when proxy session can't be retrieved)
-- Sign-in → Dashboard redirect race fixed
-- Convex removed from runtime (placeholder provider removed from `main.tsx`)
+## Test status (2026-01-25)
+- Backend: **29/29 passing** (`/app/backend/tests/test_worksoy_vetting.py`).
+- Frontend: smoke-tested via Playwright — `/vetting` renders, language test submit → advances stage, `/admin` shows pipeline, `/experts` shows 27 cards with shortlist hearts.
 
-### 🚧 Deferred / backlog
-- Email provider wiring (Resend) — stub logs in place, just needs API key
-- `server.py` split into routers (auth/briefs/proposals/contracts/payments/messages/notifications/files/reviews/disputes/admin)
-- Invoice / 1099 generation
-- Time tracking, team accounts, referral program, expert analytics, saved searches, blog
+## Prioritized backlog
+- **P0** (must-have follow-ups)
+  - Verify a sender domain at https://app.emailit.com and set `EMAIL_FROM` in `/app/backend/.env` so vetting transactional emails actually deliver (currently logged-only since `EMAIL_FROM` is empty).
+- **P1**
+  - Calendly/Cal.com link on screening-call stage (deferred per user request).
+  - PDF invoice download (currently HTML — print-to-PDF works).
+  - Public read-only "vetting transparency" page (process explanation + acceptance rate) to lift conversion on /for-experts.
+  - Saved-search → email digest when new matching briefs land.
+- **P2**
+  - Split `server.py` into routers (vetting, earnings, shortlists, etc.).
+  - Single $facet aggregation for `/api/me/earnings` instead of 3 $group queries.
+  - Replace N+1 lookups in `/api/admin/vetting/applications` with a $lookup aggregation.
 
-## APIs (added this iteration)
-- `GET /api/notifications` · `GET /api/notifications/unread-count` · `POST /api/notifications/{id}/read` · `POST /api/notifications/read-all`
-- `POST /api/files/upload` (multipart) · `GET /api/files/{id}`
-- `POST/GET /api/contracts/{id}/reviews` · `GET /api/experts/{id}/reviews`
-- `POST /api/milestones/{id}/dispute` · `GET /api/admin/disputes` · `POST /api/admin/disputes/{id}/resolve`
+## Next tasks
+1. Ask user to verify a sender domain at https://app.emailit.com + set `EMAIL_FROM`.
+2. Wire payout view on the Earnings card (bank/connect intent stub).
+3. Calendly integration on the screening stage.
 
-## Models (Mongo) — added
-`notifications`, `files`, `reviews`, `disputes` (plus `messages` now carries optional `file_id/file_name/file_size/file_content_type`)
+## ENHANCEMENT IDEA (next session)
+Add a public, indexable **"Vetting transparency" page** at `/process` showing the 5 stages with real anonymised funnel stats (e.g. "47 of 1,621 applicants passed last quarter"). This is the single highest-leverage SEO + conversion move for a Toptal-style marketplace — Toptal's own "Top 3%" claim is the strongest part of their funnel.

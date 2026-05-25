@@ -47,6 +47,7 @@ export function AdminPage() {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "vetting">("vetting");
   const [loading, setLoading] = useState(true);
+  const [openDispute, setOpenDispute] = useState<string | null>(null);
 
   useEffect(() => {
     if (isPending) return;
@@ -97,7 +98,6 @@ export function AdminPage() {
     await signOutUser();
     navigate({ to: "/admin/login" });
   };
-  const [openDispute, setOpenDispute] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-ink text-cream">
