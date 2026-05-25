@@ -15,6 +15,7 @@ import {
   type Dispute,
 } from "@/lib/api";
 import { DisputeThread } from "@/components/DisputeThread";
+import { AdminVettingPanel } from "@/components/AdminVettingPanel";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 import { usePageMeta } from "@/lib/seo";
@@ -44,7 +45,7 @@ export function AdminPage() {
   const [experts, setExperts] = useState<ApiExpert[]>([]);
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
-  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes">("queue");
+  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "vetting">("vetting");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -131,17 +132,20 @@ export function AdminPage() {
         )}
 
         <div className="mt-10 flex gap-2 border-b border-cream/10">
-          {(["queue", "all", "briefs", "disputes"] as const).map((t) => (
+          {(["vetting", "queue", "all", "briefs", "disputes"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
+              data-testid={`admin-tab-${t}`}
               className={cn(
                 "border-b-2 px-4 py-3 text-[13px] font-semibold transition-colors",
                 tab === t ? "border-sun text-cream" : "border-transparent text-cream/50 hover:text-cream/80",
               )}
             >
-              {t === "queue"
-                ? `Vetting queue (${unverified.length})`
+              {t === "vetting"
+                ? "Vetting pipeline"
+                : t === "queue"
+                ? `Legacy vet queue (${unverified.length})`
                 : t === "all"
                 ? `All experts (${experts.length})`
                 : t === "briefs"
@@ -153,6 +157,8 @@ export function AdminPage() {
 
         {loading ? (
           <div className="mt-10 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-cream/40" /></div>
+        ) : tab === "vetting" ? (
+          <div className="mt-8"><AdminVettingPanel /></div>
         ) : tab === "briefs" ? (
           <div className="mt-8 overflow-hidden rounded border border-cream/10">
             {briefs.length === 0 ? (

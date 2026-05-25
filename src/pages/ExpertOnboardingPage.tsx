@@ -81,7 +81,7 @@ export function ExpertOnboardingPage() {
         availability: form.availability,
         image: form.image || undefined,
       });
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/vetting" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile");
     } finally {
@@ -98,7 +98,7 @@ export function ExpertOnboardingPage() {
             Tell us about your practice.
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-60">
-            Your profile goes live immediately. The <em>Verified</em> badge is awarded after our team reviews your references.
+            Your profile is the first stage of our 5-step vetting. We screen for language, depth, references, and a paid test project — about 3% pass. The <em>Verified</em> badge lands when you do.
           </p>
 
           {error && (

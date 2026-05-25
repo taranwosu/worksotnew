@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration-4 backend coverage of the new Toptal-style 5-stage vetting gauntlet + hard gate + expert earnings/invoices + client shortlists + saved searches. Wrote 29 pytest cases in /app/backend/tests/test_worksoy_vetting.py — all 29 pass. Full happy-path flow exercised: register expert → upsert profile (auto-creates vetting app at language_personality, isPublished=false, verified=false, hidden from /api/experts) → submit language → submit skill → admin lists screening_call → admin records screening call → admin assigns test project → expert fetches & submits → admin marks passed → admin advances to approved → expert appears in /api/experts AND can submit proposals. Hard gate verified: an unverified expert gets 403 with 'vetting' in the detail when calling POST /api/briefs/{id}/proposals; the same expert after approval gets 200. Reject path verified end-to-end (stage=rejected, isPublished=false, hidden from public). Earnings (all zero) and invoices ([]) for a fresh expert verified. Shortlists CRUD + duplicate guard verified. Saved-searches CRUD verified. Admin-only endpoints reject non-admin (403) and unauthenticated (403). GET /api/health = 200. /api/experts returns 25 approved-only experts.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_worksoy_vetting.py",
+    "/app/test_reports/pytest/worksoy_vetting.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 2679 LOC — far past the 700-line guideline. The vetting block (lines ~1986-2399), earnings/invoices (~2402-2502), and shortlists/saved-searches (~2505-2592) are clean drop-in candidates for splitting into routers/vetting.py, routers/earnings.py, routers/shortlists.py.",
+    "server.py line 2245 admin_list_vetting: N+1 query pattern — for each application it performs separate users + experts + test_projects lookups inside a Python loop. For a large queue this will get slow; consider a single $lookup aggregation or batched fetch by user_id/expert_id/test_project_id sets.",
+    "server.py line 2381 admin_review_test_project: status is updated to 'passed'/'failed' on the test project, but the parent vetting_application's stage is NOT auto-advanced — an admin must still call /advance separately. This is intentional per the playbook but worth documenting in API docs / admin UI so reviewers don't think the system is broken.",
+    "server.py line 2417 my_earnings: aggregation runs three separate $group queries (released / funded / pending). For better performance combine into a single aggregation with $facet or $group by status.",
+    "server.py line 2552 remove_shortlist: uses {user_id, expert_id} composite which matches the unique index — good. But the response is {ok: true} on success while POST returns ShortlistOut and other endpoints return 204-style — minor inconsistency; consider standardising on 204 No Content for deletes across the API.",
+    "server.py line 854 submit_proposal vetting gate: fallback `('approved' if profile.get('verified') else 'not_started')` is a useful back-compat shim for the 25 legacy seeded experts. Once seed.py also writes vetting_stage='approved' (it already does per the diff), the fallback can be removed in a future cleanup.",
+    "Vetting hard-gate detail message ‘You must complete WorkSoy vetting before sending proposals’ is good for the test assertion; consider also adding the current stage (e.g. ‘…currently at skill_quiz’) to help the UI render contextual CTAs without an extra round-trip."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_worksoy_vetting.py"
+  ],
+  "success_rate": {"backend": "100% (29/29)", "frontend": "n/a (backend-only request)"},
+  "test_credentials": "admin@worksoy.com / WorkSoy!Admin2026  |  fresh TEST_*@worksoy.com users created per run (suffix run-id + uuid)",
+  "seed_data_creation": "Each run creates 4 fresh users prefixed TEST_ (one expert who completes vetting → approved, one expert who registers but never creates a profile, one expert who is rejected, one client). Per run also: 1 brief 'TEST Vetting Gauntlet Brief …', 1 proposal on that brief, 1 expert profile for the approved path + 1 for the gated path + 1 for the reject path, 1 vetting application per expert, 1 test project (status=passed). All records survive across runs. EMAIL_FROM is intentionally empty so mailer.send_email() short-circuits and logs only — confirmed no exception during /api/admin/vetting/.../advance or /reject calls.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_worksoy_vetting.py -v` for iteration-4 (29 cases, all pass). Previous test files /app/backend/tests/test_worksoy_flows.py and /app/backend/tests/test_worksoy_iter3.py still exist — main agent's instructions said NOT to re-run them this iteration; they cover prior surface (auth, payments, files, reviews, disputes, notifications). Two harmless backend warnings appear in supervisor logs and can be ignored: (1) passlib AttributeError on `bcrypt.__about__` — caused by passlib 1.7.x not knowing bcrypt ≥4 API, hashing still works correctly; (2) `CORS_ORIGINS not set; allowing all origins (development only)`. Hard-gate logic lives at server.py:850-859; vetting block starts at server.py:1986; earnings/invoices at 2417/2446; shortlists at 2522; saved-searches at 2573. All required indexes (vetting_applications unique user_id, shortlists composite unique, test_projects, saved_searches) confirmed in @app.on_event('startup') at server.py:2647-2656.",
+  "rca_of_the_issue": "n/a — no bugs found. The single failure during initial run was in the test itself (asserted email equality without accounting for backend's payload.email.lower() normalisation on register); fixed by comparing .lower() on both sides. All 29 cases now green."
+}

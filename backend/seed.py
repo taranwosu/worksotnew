@@ -156,7 +156,10 @@ async def main():
             "currency": "USD",
             "image": _img(i * 7 + 3, gender),
             "bio": bio,
-            "isPublished": True,
+            "isPublished": e.get("verified", False),
+            # Existing seeded experts are pre-vetted so they remain visible to
+            # clients. New sign-ups will start at 'language_personality'.
+            "vetting_stage": "approved" if e.get("verified") else "language_personality",
             "created_at": now,
         })
     await db.experts.insert_many(docs)

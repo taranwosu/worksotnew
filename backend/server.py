@@ -684,14 +684,21 @@ async def mark_contact_handled(
 # =========================================================================
 @app.get("/api/experts", response_model=List[Expert])
 async def list_experts(q: Optional[str] = None, category: Optional[str] = None, sort: str = "top"):
-    query: dict = {"isPublished": True}
+    # Hard gate: only fully-vetted experts (vetting_stage='approved' or legacy
+    # `verified=True` seeded entries) appear in the public directory.
+    query: dict = {
+        "isPublished": True,
+        "$or": [{"vetting_stage": "approved"}, {"verified": True}],
+    }
     if category and category.lower() != "all":
         query["category"] = category
     if q:
-        query["$or"] = [
-            {"name": {"$regex": q, "$options": "i"}},
-            {"headline": {"$regex": q, "$options": "i"}},
-            {"specialties": {"$regex": q, "$options": "i"}},
+        query["$and"] = [
+            {"$or": [
+                {"name": {"$regex": q, "$options": "i"}},
+                {"headline": {"$regex": q, "$options": "i"}},
+                {"specialties": {"$regex": q, "$options": "i"}},
+            ]}
         ]
     cursor = db.experts.find(query, {"_id": 0})
     if sort == "rate_asc":
@@ -725,7 +732,7 @@ async def my_expert_profile(user: User = Depends(get_current_user)):
 
 @app.post("/api/experts/me", response_model=Expert)
 async def upsert_expert_profile(payload: ExpertProfileIn, user: User = Depends(get_current_user)):
-    existing = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1})
+    existing = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1, "vetting_stage": 1, "verified": 1})
     base = {
         **payload.model_dump(),
         "name": user.name,
@@ -735,8 +742,11 @@ async def upsert_expert_profile(payload: ExpertProfileIn, user: User = Depends(g
         "rating": 0.0,
         "reviewCount": 0,
         "topRated": False,
-        "verified": False,
-        "isPublished": True,
+        # Vetting gate: new profiles start unverified + hidden until they pass
+        # the gauntlet. Preserve existing flags when re-saving.
+        "verified": bool((existing or {}).get("verified", False)),
+        "vetting_stage": (existing or {}).get("vetting_stage", "language_personality"),
+        "isPublished": bool((existing or {}).get("verified", False)),
         "updated_at": _now(),
     }
     if existing:
@@ -747,6 +757,25 @@ async def upsert_expert_profile(payload: ExpertProfileIn, user: User = Depends(g
         await db.experts.insert_one({**base, "id": eid, "created_at": _now()})
         # Upgrade user role to expert
         await db.users.update_one({"user_id": user.user_id}, {"$set": {"role": "expert"}})
+    # Kick off vetting application if one doesn't exist yet.
+    app_doc = await db.vetting_applications.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1})
+    if not app_doc:
+        await db.vetting_applications.insert_one({
+            "id": f"vap_{uuid.uuid4().hex[:10]}",
+            "user_id": user.user_id,
+            "expert_id": eid,
+            "stage": "language_personality",
+            "language_answers": None,
+            "skill_answers": None,
+            "screening_scheduled_at": None,
+            "screening_notes": None,
+            "screening_passed": None,
+            "test_project_id": None,
+            "decision_note": None,
+            "history": [{"stage": "language_personality", "at": _now().isoformat(), "by": "system"}],
+            "created_at": _now(),
+            "updated_at": _now(),
+        })
     doc = await db.experts.find_one({"id": eid}, {"_id": 0})
     return Expert(**doc)
 
@@ -818,10 +847,19 @@ async def submit_proposal(brief_id: str, payload: ProposalIn, user: User = Depen
         raise HTTPException(status_code=404, detail="Brief not open")
     if brief["user_id"] == user.user_id:
         raise HTTPException(status_code=400, detail="You cannot propose on your own brief")
+    # Hard gate: only fully-vetted experts may submit proposals.
+    profile = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not profile:
+        raise HTTPException(status_code=403, detail="Create your expert profile first")
+    stage = profile.get("vetting_stage") or ("approved" if profile.get("verified") else "not_started")
+    if stage != "approved":
+        raise HTTPException(
+            status_code=403,
+            detail="You must complete WorkSoy vetting before sending proposals. Open /vetting to continue.",
+        )
     dup = await db.proposals.find_one({"brief_id": brief_id, "expert_user_id": user.user_id}, {"_id": 0, "id": 1})
     if dup:
         raise HTTPException(status_code=400, detail="You already submitted a proposal for this brief")
-    profile = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0})
     pid = f"prp_{uuid.uuid4().hex[:10]}"
     doc = {
         "id": pid,
@@ -1845,7 +1883,7 @@ async def post_dispute_message(
         await _notify(
             uid,
             type="dispute.message",
-            title=f"New evidence on dispute",
+            title="New evidence on dispute",
             body=payload.body[:140],
             href=f"/contracts/{c['id']}",
             entity_id=dispute_id,
@@ -1943,6 +1981,618 @@ async def admin_resolve_dispute(dispute_id: str, payload: DisputeResolve, admin:
 
 
 # =========================================================================
+# Vetting (5-stage Toptal-style gauntlet)
+# =========================================================================
+VETTING_STAGES = [
+    "not_started",
+    "language_personality",
+    "skill_quiz",
+    "screening_call",
+    "test_project",
+    "approved",
+    "rejected",
+]
+# Order used to "advance" the application one step. Approved/rejected are
+# terminal so they don't appear here.
+STAGE_ORDER = [
+    "language_personality",
+    "skill_quiz",
+    "screening_call",
+    "test_project",
+    "approved",
+]
+
+
+def _next_stage(current: str) -> str:
+    if current == "not_started":
+        return "language_personality"
+    if current in ("approved", "rejected"):
+        return current
+    try:
+        idx = STAGE_ORDER.index(current)
+        return STAGE_ORDER[idx + 1] if idx + 1 < len(STAGE_ORDER) else "approved"
+    except ValueError:
+        return "language_personality"
+
+
+class VettingApplication(BaseModel):
+    id: str
+    user_id: str
+    expert_id: Optional[str] = None
+    stage: str
+    language_answers: Optional[dict] = None
+    skill_answers: Optional[dict] = None
+    screening_scheduled_at: Optional[datetime] = None
+    screening_notes: Optional[str] = None
+    screening_passed: Optional[bool] = None
+    test_project_id: Optional[str] = None
+    decision_note: Optional[str] = None
+    history: List[dict] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class TestProject(BaseModel):
+    id: str
+    application_id: str
+    user_id: str
+    title: str
+    description: str
+    deliverables: List[str] = Field(default_factory=list)
+    due_at: Optional[datetime] = None
+    status: str  # assigned | submitted | passed | failed
+    submitted_at: Optional[datetime] = None
+    reviewer_notes: Optional[str] = None
+    file_ids: List[str] = Field(default_factory=list)
+    submission_note: Optional[str] = None
+    created_at: datetime
+
+
+# --- Schemas
+class LanguageTestIn(BaseModel):
+    timezone: str = Field(min_length=2, max_length=80)
+    weekly_hours: int = Field(ge=1, le=80)
+    english_self_rating: int = Field(ge=1, le=5)
+    communication_style: str = Field(min_length=20, max_length=2000)
+    why_worksoy: str = Field(min_length=20, max_length=2000)
+
+
+class SkillTestIn(BaseModel):
+    case_study: str = Field(min_length=80, max_length=4000)
+    portfolio_url: Optional[str] = Field(default=None, max_length=500)
+    methodology: str = Field(min_length=50, max_length=3000)
+
+
+class TestProjectAssignIn(BaseModel):
+    title: str = Field(min_length=4, max_length=160)
+    description: str = Field(min_length=40, max_length=4000)
+    deliverables: List[str] = Field(default_factory=list)
+    due_at: Optional[datetime] = None
+
+
+class TestProjectSubmitIn(BaseModel):
+    submission_note: str = Field(min_length=10, max_length=4000)
+    file_ids: List[str] = Field(default_factory=list)
+
+
+class AdminVettingActionIn(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ScreeningCallIn(BaseModel):
+    scheduled_at: Optional[datetime] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    passed: Optional[bool] = None
+
+
+async def _get_or_make_application(user_id: str) -> dict:
+    doc = await db.vetting_applications.find_one({"user_id": user_id}, {"_id": 0})
+    if doc:
+        return doc
+    profile = await db.experts.find_one({"user_id": user_id}, {"_id": 0, "id": 1})
+    aid = f"vap_{uuid.uuid4().hex[:10]}"
+    now = _now()
+    new_doc = {
+        "id": aid,
+        "user_id": user_id,
+        "expert_id": profile["id"] if profile else None,
+        "stage": "language_personality",
+        "language_answers": None,
+        "skill_answers": None,
+        "screening_scheduled_at": None,
+        "screening_notes": None,
+        "screening_passed": None,
+        "test_project_id": None,
+        "decision_note": None,
+        "history": [{"stage": "language_personality", "at": now.isoformat(), "by": "system"}],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.vetting_applications.insert_one(new_doc)
+    return new_doc
+
+
+async def _set_stage(app_id: str, new_stage: str, actor: str, note: Optional[str] = None) -> dict:
+    update = {"stage": new_stage, "updated_at": _now()}
+    if note:
+        update["decision_note"] = note
+    await db.vetting_applications.update_one(
+        {"id": app_id},
+        {
+            "$set": update,
+            "$push": {"history": {"stage": new_stage, "at": _now().isoformat(), "by": actor, "note": note}},
+        },
+    )
+    return await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+
+
+async def _sync_expert_verification(app: dict) -> None:
+    """When an application is approved/rejected, mirror onto the expert doc."""
+    if not app.get("expert_id"):
+        return
+    if app["stage"] == "approved":
+        await db.experts.update_one(
+            {"id": app["expert_id"]},
+            {"$set": {"verified": True, "vetting_stage": "approved", "isPublished": True}},
+        )
+    elif app["stage"] == "rejected":
+        await db.experts.update_one(
+            {"id": app["expert_id"]},
+            {"$set": {"verified": False, "vetting_stage": "rejected", "isPublished": False}},
+        )
+    else:
+        await db.experts.update_one(
+            {"id": app["expert_id"]},
+            {"$set": {"vetting_stage": app["stage"], "verified": False, "isPublished": False}},
+        )
+
+
+@app.get("/api/vetting/me", response_model=VettingApplication)
+async def my_vetting(user: User = Depends(get_current_user)):
+    profile = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Create your expert profile first")
+    doc = await _get_or_make_application(user.user_id)
+    return VettingApplication(**doc)
+
+
+@app.post("/api/vetting/language", response_model=VettingApplication)
+async def submit_language(payload: LanguageTestIn, user: User = Depends(get_current_user)):
+    profile = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Create your expert profile first")
+    app_doc = await _get_or_make_application(user.user_id)
+    if app_doc["stage"] not in ("language_personality",):
+        raise HTTPException(status_code=400, detail=f"Cannot submit language test from stage '{app_doc['stage']}'")
+    await db.vetting_applications.update_one(
+        {"id": app_doc["id"]},
+        {"$set": {
+            "language_answers": payload.model_dump(),
+            "stage": "skill_quiz",
+            "updated_at": _now(),
+        },
+        "$push": {"history": {"stage": "skill_quiz", "at": _now().isoformat(), "by": "expert"}}},
+    )
+    await _notify_admins("vetting.new_submission", "Vetting: language test submitted",
+                         body=f"{user.name} finished the language & personality screen.",
+                         href="/admin", entity_id=app_doc["id"])
+    doc = await db.vetting_applications.find_one({"id": app_doc["id"]}, {"_id": 0})
+    return VettingApplication(**doc)
+
+
+@app.post("/api/vetting/skill", response_model=VettingApplication)
+async def submit_skill(payload: SkillTestIn, user: User = Depends(get_current_user)):
+    app_doc = await _get_or_make_application(user.user_id)
+    if app_doc["stage"] != "skill_quiz":
+        raise HTTPException(status_code=400, detail=f"Cannot submit skill quiz from stage '{app_doc['stage']}'")
+    await db.vetting_applications.update_one(
+        {"id": app_doc["id"]},
+        {"$set": {
+            "skill_answers": payload.model_dump(),
+            "stage": "screening_call",
+            "updated_at": _now(),
+        },
+        "$push": {"history": {"stage": "screening_call", "at": _now().isoformat(), "by": "expert"}}},
+    )
+    await _notify_admins("vetting.new_submission", "Vetting: skill quiz submitted",
+                         body=f"{user.name} is ready for a screening call.",
+                         href="/admin", entity_id=app_doc["id"])
+    doc = await db.vetting_applications.find_one({"id": app_doc["id"]}, {"_id": 0})
+    return VettingApplication(**doc)
+
+
+@app.get("/api/vetting/test-project", response_model=Optional[TestProject])
+async def my_test_project(user: User = Depends(get_current_user)):
+    app_doc = await db.vetting_applications.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not app_doc or not app_doc.get("test_project_id"):
+        return None
+    tp = await db.test_projects.find_one({"id": app_doc["test_project_id"]}, {"_id": 0})
+    return TestProject(**tp) if tp else None
+
+
+@app.post("/api/vetting/test-project/submit", response_model=TestProject)
+async def submit_test_project(payload: TestProjectSubmitIn, user: User = Depends(get_current_user)):
+    app_doc = await db.vetting_applications.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not app_doc or app_doc["stage"] != "test_project" or not app_doc.get("test_project_id"):
+        raise HTTPException(status_code=400, detail="No test project assigned yet")
+    tp = await db.test_projects.find_one({"id": app_doc["test_project_id"]}, {"_id": 0})
+    if not tp:
+        raise HTTPException(status_code=404, detail="Test project missing")
+    if tp["status"] not in ("assigned",):
+        raise HTTPException(status_code=400, detail=f"Test project already {tp['status']}")
+    await db.test_projects.update_one(
+        {"id": tp["id"]},
+        {"$set": {
+            "status": "submitted",
+            "submitted_at": _now(),
+            "submission_note": payload.submission_note,
+            "file_ids": payload.file_ids,
+        }},
+    )
+    await _notify_admins("vetting.test_submitted", "Vetting: test project delivered",
+                         body=f"{user.name} delivered the test project '{tp['title']}'.",
+                         href="/admin", entity_id=app_doc["id"])
+    tp = await db.test_projects.find_one({"id": tp["id"]}, {"_id": 0})
+    return TestProject(**tp)
+
+
+async def _notify_admins(type: str, title: str, body: str, href: str = "/admin", entity_id: Optional[str] = None) -> None:
+    async for a in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
+        await _notify(a["user_id"], type=type, title=title, body=body, href=href, entity_id=entity_id)
+
+
+# --- Admin endpoints ---
+@app.get("/api/admin/vetting/applications")
+async def admin_list_vetting(stage: Optional[str] = None, _: User = Depends(require_admin)):
+    q: dict = {}
+    if stage:
+        q["stage"] = stage
+    docs = await db.vetting_applications.find(q, {"_id": 0}).sort("updated_at", -1).to_list(length=500)
+    out = []
+    for d in docs:
+        u = await db.users.find_one({"user_id": d["user_id"]}, {"_id": 0, "name": 1, "email": 1, "picture": 1})
+        exp = await db.experts.find_one({"user_id": d["user_id"]}, {"_id": 0, "headline": 1, "category": 1, "hourlyRate": 1, "image": 1, "id": 1}) if d.get("expert_id") else None
+        tp = None
+        if d.get("test_project_id"):
+            tp = await db.test_projects.find_one({"id": d["test_project_id"]}, {"_id": 0})
+        out.append({"application": d, "user": u, "expert": exp, "test_project": tp})
+    return out
+
+
+@app.post("/api/admin/vetting/{app_id}/advance", response_model=VettingApplication)
+async def admin_advance_stage(app_id: str, payload: AdminVettingActionIn, admin: User = Depends(require_admin)):
+    app_doc = await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app_doc:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if app_doc["stage"] in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Application is already finalised")
+    new_stage = _next_stage(app_doc["stage"])
+    updated = await _set_stage(app_id, new_stage, actor=f"admin:{admin.user_id}", note=payload.note)
+    await _sync_expert_verification(updated)
+    # Notify expert
+    title_map = {
+        "skill_quiz": "Stage passed — ready for the skill quiz",
+        "screening_call": "Stage passed — screening call up next",
+        "test_project": "Stage passed — your test project is being prepared",
+        "approved": "Welcome to the WorkSoy roster",
+        "rejected": "Vetting decision",
+    }
+    body_map = {
+        "skill_quiz": "Your language & personality screen passed. Continue with the skill questionnaire.",
+        "screening_call": "Your skill quiz passed. We'll reach out to schedule a screening call.",
+        "test_project": "Screening call passed. A paid test project will be assigned shortly.",
+        "approved": "You are now a verified expert. You can submit proposals and appear in the public roster.",
+        "rejected": "After review, we couldn't move forward this round. See your dashboard for notes.",
+    }
+    await _notify(
+        app_doc["user_id"],
+        type="vetting.advanced",
+        title=title_map.get(new_stage, "Vetting status updated"),
+        body=body_map.get(new_stage),
+        href="/vetting",
+        entity_id=app_id,
+        email_subject=title_map.get(new_stage, "Vetting status updated"),
+        email_html=f"<p>{body_map.get(new_stage, '')}</p>"
+                   f"<p><a href=\"{APP_BASE_URL}/vetting\">Open your vetting dashboard</a></p>",
+    )
+    return VettingApplication(**updated)
+
+
+@app.post("/api/admin/vetting/{app_id}/reject", response_model=VettingApplication)
+async def admin_reject(app_id: str, payload: AdminVettingActionIn, admin: User = Depends(require_admin)):
+    app_doc = await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app_doc:
+        raise HTTPException(status_code=404, detail="Application not found")
+    updated = await _set_stage(app_id, "rejected", actor=f"admin:{admin.user_id}", note=payload.note)
+    await _sync_expert_verification(updated)
+    await _notify(
+        app_doc["user_id"],
+        type="vetting.rejected",
+        title="Vetting decision",
+        body=payload.note or "Application not advanced.",
+        href="/vetting",
+        entity_id=app_id,
+        email_subject="WorkSoy vetting decision",
+        email_html=f"<p>{payload.note or 'Application not advanced.'}</p>",
+    )
+    return VettingApplication(**updated)
+
+
+@app.post("/api/admin/vetting/{app_id}/screening-call", response_model=VettingApplication)
+async def admin_update_screening(app_id: str, payload: ScreeningCallIn, admin: User = Depends(require_admin)):
+    app_doc = await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app_doc:
+        raise HTTPException(status_code=404, detail="Application not found")
+    update = {"updated_at": _now()}
+    if payload.scheduled_at:
+        update["screening_scheduled_at"] = payload.scheduled_at
+    if payload.notes is not None:
+        update["screening_notes"] = payload.notes
+    if payload.passed is not None:
+        update["screening_passed"] = payload.passed
+    await db.vetting_applications.update_one({"id": app_id}, {"$set": update})
+    doc = await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+    return VettingApplication(**doc)
+
+
+@app.post("/api/admin/vetting/{app_id}/assign-test-project", response_model=TestProject)
+async def admin_assign_test_project(app_id: str, payload: TestProjectAssignIn, admin: User = Depends(require_admin)):
+    app_doc = await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app_doc:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if app_doc["stage"] not in ("screening_call", "test_project"):
+        raise HTTPException(status_code=400, detail=f"Cannot assign test project from stage '{app_doc['stage']}'")
+    tid = f"tpr_{uuid.uuid4().hex[:10]}"
+    tp = {
+        "id": tid,
+        "application_id": app_id,
+        "user_id": app_doc["user_id"],
+        "title": payload.title,
+        "description": payload.description,
+        "deliverables": payload.deliverables,
+        "due_at": payload.due_at,
+        "status": "assigned",
+        "submitted_at": None,
+        "reviewer_notes": None,
+        "file_ids": [],
+        "submission_note": None,
+        "created_at": _now(),
+    }
+    await db.test_projects.insert_one(tp)
+    await db.vetting_applications.update_one(
+        {"id": app_id},
+        {"$set": {"test_project_id": tid, "stage": "test_project", "updated_at": _now()},
+         "$push": {"history": {"stage": "test_project", "at": _now().isoformat(), "by": f"admin:{admin.user_id}"}}},
+    )
+    await _notify(
+        app_doc["user_id"],
+        type="vetting.test_assigned",
+        title=f"Test project assigned: {payload.title}",
+        body="Open your vetting dashboard for the brief and to submit your deliverables.",
+        href="/vetting",
+        entity_id=tid,
+        email_subject=f"WorkSoy — test project assigned: {payload.title}",
+        email_html=f"<p>Your paid test project has been assigned.</p>"
+                   f"<p><a href=\"{APP_BASE_URL}/vetting\">Open your vetting dashboard</a></p>",
+    )
+    return TestProject(**tp)
+
+
+@app.post("/api/admin/vetting/{app_id}/test-project/review")
+async def admin_review_test_project(
+    app_id: str,
+    body: AdminVettingActionIn,
+    passed: bool = True,
+    admin: User = Depends(require_admin),
+):
+    app_doc = await db.vetting_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app_doc or not app_doc.get("test_project_id"):
+        raise HTTPException(status_code=404, detail="No test project")
+    tp = await db.test_projects.find_one({"id": app_doc["test_project_id"]}, {"_id": 0})
+    if not tp or tp["status"] != "submitted":
+        raise HTTPException(status_code=400, detail="Test project not in 'submitted' state")
+    new_status = "passed" if passed else "failed"
+    await db.test_projects.update_one(
+        {"id": tp["id"]},
+        {"$set": {"status": new_status, "reviewer_notes": body.note}},
+    )
+    return {"ok": True, "status": new_status}
+
+
+# =========================================================================
+# Earnings + Invoices (expert)
+# =========================================================================
+class Invoice(BaseModel):
+    id: str
+    milestone_id: str
+    contract_id: str
+    brief_title: str
+    client_name: str
+    expert_name: str
+    amount: float
+    currency: str = "USD"
+    issued_at: datetime
+
+
+@app.get("/api/me/earnings")
+async def my_earnings(user: User = Depends(get_current_user)):
+    contracts = await db.contracts.find(
+        {"expert_user_id": user.user_id}, {"_id": 0}
+    ).to_list(length=500)
+    contract_ids = [c["id"] for c in contracts]
+    if not contract_ids:
+        return {"lifetime_released": 0.0, "in_escrow": 0.0, "pending": 0.0, "active_contracts": 0, "completed_contracts": 0}
+    released = await db.milestones.aggregate([
+        {"$match": {"contract_id": {"$in": contract_ids}, "status": "released"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(length=1)
+    funded = await db.milestones.aggregate([
+        {"$match": {"contract_id": {"$in": contract_ids}, "status": {"$in": ["funded", "submitted"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(length=1)
+    pending = await db.milestones.aggregate([
+        {"$match": {"contract_id": {"$in": contract_ids}, "status": "pending"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(length=1)
+    return {
+        "lifetime_released": float(released[0]["total"]) if released else 0.0,
+        "in_escrow": float(funded[0]["total"]) if funded else 0.0,
+        "pending": float(pending[0]["total"]) if pending else 0.0,
+        "active_contracts": sum(1 for c in contracts if c["status"] == "active"),
+        "completed_contracts": sum(1 for c in contracts if c["status"] == "completed"),
+    }
+
+
+@app.get("/api/me/invoices", response_model=List[Invoice])
+async def my_invoices(user: User = Depends(get_current_user)):
+    """One invoice per RELEASED milestone for the current expert."""
+    contracts = await db.contracts.find(
+        {"expert_user_id": user.user_id}, {"_id": 0}
+    ).to_list(length=500)
+    by_id = {c["id"]: c for c in contracts}
+    if not by_id:
+        return []
+    ms = await db.milestones.find(
+        {"contract_id": {"$in": list(by_id.keys())}, "status": "released"},
+        {"_id": 0},
+    ).sort("released_at", -1).to_list(length=500)
+    out = []
+    for m in ms:
+        c = by_id[m["contract_id"]]
+        out.append(Invoice(
+            id=f"inv_{m['id']}",
+            milestone_id=m["id"],
+            contract_id=c["id"],
+            brief_title=c["brief_title"],
+            client_name=c["client_name"],
+            expert_name=c["expert_name"],
+            amount=float(m["amount"]),
+            currency=c.get("currency", "USD"),
+            issued_at=m.get("released_at") or _now(),
+        ))
+    return out
+
+
+@app.get("/api/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
+    if not invoice_id.startswith("inv_"):
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    milestone_id = invoice_id[len("inv_"):]
+    m = await db.milestones.find_one({"id": milestone_id, "status": "released"}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    c = await db.contracts.find_one({"id": m["contract_id"]}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorised")
+    return {
+        "id": invoice_id,
+        "milestone_id": m["id"],
+        "milestone_title": m["title"],
+        "contract_id": c["id"],
+        "brief_title": c["brief_title"],
+        "client_name": c["client_name"],
+        "expert_name": c["expert_name"],
+        "amount": float(m["amount"]),
+        "currency": c.get("currency", "USD"),
+        "issued_at": (m.get("released_at") or _now()).isoformat() if isinstance(m.get("released_at") or _now(), datetime) else m.get("released_at"),
+        "platform_fee": round(float(m["amount"]) * 0.15, 2),
+        "net_to_expert": round(float(m["amount"]) * 0.85, 2),
+    }
+
+
+# =========================================================================
+# Shortlists + Saved searches (client convenience)
+# =========================================================================
+class ShortlistIn(BaseModel):
+    expert_id: str
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class ShortlistOut(BaseModel):
+    id: str
+    user_id: str
+    expert_id: str
+    note: Optional[str] = None
+    created_at: datetime
+    expert: Optional[dict] = None
+
+
+@app.get("/api/me/shortlists", response_model=List[ShortlistOut])
+async def list_shortlists(user: User = Depends(get_current_user)):
+    docs = await db.shortlists.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    out: List[ShortlistOut] = []
+    for d in docs:
+        exp = await db.experts.find_one({"id": d["expert_id"]}, {"_id": 0})
+        out.append(ShortlistOut(**d, expert=exp))
+    return out
+
+
+@app.post("/api/me/shortlists", response_model=ShortlistOut)
+async def add_shortlist(payload: ShortlistIn, user: User = Depends(get_current_user)):
+    exp = await db.experts.find_one({"id": payload.expert_id}, {"_id": 0})
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expert not found")
+    dup = await db.shortlists.find_one({"user_id": user.user_id, "expert_id": payload.expert_id}, {"_id": 0, "id": 1})
+    if dup:
+        raise HTTPException(status_code=400, detail="Already shortlisted")
+    sid = f"sl_{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": sid,
+        "user_id": user.user_id,
+        "expert_id": payload.expert_id,
+        "note": payload.note,
+        "created_at": _now(),
+    }
+    await db.shortlists.insert_one(doc)
+    return ShortlistOut(**doc, expert=exp)
+
+
+@app.delete("/api/me/shortlists/{expert_id}")
+async def remove_shortlist(expert_id: str, user: User = Depends(get_current_user)):
+    r = await db.shortlists.delete_one({"user_id": user.user_id, "expert_id": expert_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not in shortlist")
+    return {"ok": True}
+
+
+class SavedSearchIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    query: Optional[str] = Field(default=None, max_length=200)
+    category: Optional[str] = Field(default=None, max_length=80)
+    sort: Optional[str] = Field(default=None, max_length=40)
+
+
+class SavedSearch(SavedSearchIn):
+    id: str
+    user_id: str
+    created_at: datetime
+
+
+@app.get("/api/me/saved-searches", response_model=List[SavedSearch])
+async def list_saved_searches(user: User = Depends(get_current_user)):
+    docs = await db.saved_searches.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    return [SavedSearch(**d) for d in docs]
+
+
+@app.post("/api/me/saved-searches", response_model=SavedSearch)
+async def save_search(payload: SavedSearchIn, user: User = Depends(get_current_user)):
+    sid = f"sav_{uuid.uuid4().hex[:10]}"
+    doc = {"id": sid, "user_id": user.user_id, "created_at": _now(), **payload.model_dump()}
+    await db.saved_searches.insert_one(doc)
+    return SavedSearch(**doc)
+
+
+@app.delete("/api/me/saved-searches/{search_id}")
+async def delete_saved_search(search_id: str, user: User = Depends(get_current_user)):
+    r = await db.saved_searches.delete_one({"id": search_id, "user_id": user.user_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
+# =========================================================================
 # Startup
 # =========================================================================
 @app.on_event("startup")
@@ -1992,6 +2642,18 @@ async def _startup():
     await db.password_resets.create_index("token_hash", unique=True)
     await db.password_resets.create_index("user_id")
     await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
+
+    # Vetting + shortlists + saved searches + test projects
+    await db.vetting_applications.create_index("id", unique=True)
+    await db.vetting_applications.create_index("user_id", unique=True)
+    await db.vetting_applications.create_index("stage")
+    await db.test_projects.create_index("id", unique=True)
+    await db.test_projects.create_index("application_id")
+    await db.test_projects.create_index("user_id")
+    await db.shortlists.create_index([("user_id", 1), ("expert_id", 1)], unique=True)
+    await db.shortlists.create_index("user_id")
+    await db.saved_searches.create_index("id", unique=True)
+    await db.saved_searches.create_index("user_id")
 
     # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})

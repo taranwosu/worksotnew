@@ -27,7 +27,7 @@ export async function initAnalytics(): Promise<boolean> {
   try {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — optional runtime dependency
-    const mod = await import("posthog-js");
+    const mod = await import(/* @vite-ignore */ ("posthog-js" as string));
     const posthog = (mod.default ?? mod) as PostHogLike;
     posthog.init(key, {
       api_host:

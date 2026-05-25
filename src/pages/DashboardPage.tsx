@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, Briefcase, FileText, MessageSquare, CircleDollarSign, Plus } from "lucide-react";
+import { Loader2, Plus, FileText, Download, Heart } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import {
   listMyBriefs,
@@ -8,10 +8,19 @@ import {
   listMyContracts,
   listConversations,
   fetchMyExpertProfile,
+  getMyEarnings,
+  listMyInvoices,
+  getMyVetting,
+  listShortlists,
+  removeShortlist,
   type Brief,
   type Proposal,
   type Contract,
   type ConversationSummary,
+  type Earnings,
+  type Invoice,
+  type VettingApplication,
+  type Shortlist,
 } from "@/lib/api";
 import { Container, Eyebrow, LinkButton, Tag } from "@/components/primitives";
 import { usePageMeta } from "@/lib/seo";
@@ -29,6 +38,10 @@ export function DashboardPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [convs, setConvs] = useState<ConversationSummary[]>([]);
   const [hasExpertProfile, setHasExpertProfile] = useState(false);
+  const [vetting, setVetting] = useState<VettingApplication | null>(null);
+  const [earnings, setEarnings] = useState<Earnings | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [shortlist, setShortlist] = useState<Shortlist[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,13 +57,21 @@ export function DashboardPage() {
       listMyContracts().catch(() => []),
       listConversations().catch(() => []),
       fetchMyExpertProfile().catch(() => null),
+      getMyEarnings().catch(() => null),
+      listMyInvoices().catch(() => []),
+      getMyVetting().catch(() => null),
+      listShortlists().catch(() => []),
     ])
-      .then(([b, p, c, cv, ep]) => {
+      .then(([b, p, c, cv, ep, ea, iv, vt, sl]) => {
         setBriefs(b);
         setProposals(p);
         setContracts(c);
         setConvs(cv);
         setHasExpertProfile(Boolean(ep));
+        setEarnings(ea);
+        setInvoices(iv);
+        setVetting(vt);
+        setShortlist(sl);
       })
       .finally(() => setLoading(false));
   }, [session]);
@@ -64,9 +85,7 @@ export function DashboardPage() {
   }
 
   const firstName = (session.user.name || session.user.email).split(" ")[0];
-  const earnings = contracts
-    .filter((c) => c.expert_user_id === session.user._id)
-    .reduce((sum, c) => sum + (c.total_amount || 0), 0);
+  const vettingInProgress = vetting && !["approved", "rejected"].includes(vetting.stage);
 
   return (
     <div className="bg-cream pb-24 pt-16 md:pt-20">
@@ -84,18 +103,111 @@ export function DashboardPage() {
                 Become an expert
               </LinkButton>
             )}
+            {vettingInProgress && (
+              <LinkButton to="/vetting" tone="outline" size="md" data-testid="dashboard-continue-vetting">
+                Continue vetting
+              </LinkButton>
+            )}
             <LinkButton to="/post-request" tone="ink" size="md" arrow>
               <Plus className="mr-1.5 h-4 w-4" /> Post a brief
             </LinkButton>
           </div>
         </div>
 
+        {vettingInProgress && (
+          <div className="mt-6 rounded border border-sun bg-sun/10 px-5 py-4 text-[13.5px] text-ink" data-testid="vetting-banner">
+            <p className="font-semibold">You're in the vetting gauntlet — current stage: <span className="italic">{vetting!.stage.replace("_", " ")}</span>.</p>
+            <p className="mt-1 text-ink-60">Until you're approved, your profile is hidden and proposals are disabled. <Link to="/vetting" className="underline">Continue →</Link></p>
+          </div>
+        )}
+
         <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
           <Stat label="Your briefs" value={briefs.length} />
           <Stat label="Proposals received" value={briefs.reduce((s, b) => s + b.proposal_count, 0)} />
           <Stat label="Active contracts" value={contracts.filter((c) => c.status === "active").length} />
-          <Stat label="Lifetime earnings" value={`$${earnings.toLocaleString()}`} prefix={hasExpertProfile ? "" : "—"} hide={!hasExpertProfile} />
+          <Stat label={hasExpertProfile ? "Lifetime earnings" : "Active conversations"}
+            value={hasExpertProfile ? `$${(earnings?.lifetime_released ?? 0).toLocaleString()}` : convs.length} />
         </div>
+
+        {!hasExpertProfile && shortlist.length > 0 && (
+          <Section title="Saved experts" count={shortlist.length} href="/experts" cta="Browse more">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3" data-testid="shortlist-section">
+              {shortlist.map((s) => (
+                <div key={s.id} className="relative rounded border border-ink-12 bg-white p-4">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await removeShortlist(s.expert_id);
+                      setShortlist((prev) => prev.filter((x) => x.id !== s.id));
+                    }}
+                    aria-label="Remove from shortlist"
+                    className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-ink-12 text-ink-60 hover:border-rust hover:text-rust"
+                    data-testid={`shortlist-remove-${s.expert_id}`}
+                  >
+                    <Heart className="h-3.5 w-3.5 fill-rust text-rust" />
+                  </button>
+                  <Link to="/experts/$expertId" params={{ expertId: s.expert_id }} className="flex items-center gap-3">
+                    {s.expert?.image ? (
+                      <img src={s.expert.image} alt="" className="h-11 w-11 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-11 w-11 rounded-full bg-cream-3" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-[14px] font-semibold text-ink">{s.expert?.name ?? "Expert"}</p>
+                      <p className="truncate text-[12px] text-ink-60">{s.expert?.headline}</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-ink-40">${s.expert?.hourlyRate}/hr · {s.expert?.category}</p>
+                    </div>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {hasExpertProfile && earnings && (
+          <Section title="Earnings" count={undefined}>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded border border-ink-12 bg-white p-5">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">Lifetime released</p>
+                <p className="mt-3 font-display text-[26px] font-semibold tabular text-ink">${earnings.lifetime_released.toLocaleString()}</p>
+              </div>
+              <div className="rounded border border-ink-12 bg-white p-5">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">In escrow</p>
+                <p className="mt-3 font-display text-[26px] font-semibold tabular text-ink">${earnings.in_escrow.toLocaleString()}</p>
+              </div>
+              <div className="rounded border border-ink-12 bg-white p-5">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">Pending</p>
+                <p className="mt-3 font-display text-[26px] font-semibold tabular text-ink">${earnings.pending.toLocaleString()}</p>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {hasExpertProfile && invoices.length > 0 && (
+          <Section title="Invoices" count={invoices.length}>
+            <div className="overflow-hidden rounded border border-ink-12 bg-white" data-testid="invoices-list">
+              {invoices.map((inv) => (
+                <div key={inv.id} className="flex items-center justify-between gap-4 border-b border-ink-10 px-5 py-4 last:border-0">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-ink-40" />
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-[14px] font-semibold text-ink">{inv.brief_title}</p>
+                      <p className="mt-0.5 text-[12px] text-ink-60">
+                        From {inv.client_name} · {new Date(inv.issued_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono tabular text-[14px] font-semibold text-ink">${inv.amount.toLocaleString()}</span>
+                    <Link to="/contracts/$contractId" params={{ contractId: inv.contract_id }} className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink hover:underline" data-testid={`invoice-link-${inv.id}`}>
+                      <Download className="h-3.5 w-3.5" /> View
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
 
         <Section title="Your briefs" count={briefs.length} href="/post-request" cta="Post another">
           {loading ? <SkeletonRow /> : briefs.length === 0 ? (
@@ -217,8 +329,7 @@ export function DashboardPage() {
   );
 }
 
-function Stat({ label, value, hide }: { label: string; value: string | number; prefix?: string; hide?: boolean }) {
-  if (hide) return <div className="hidden md:block" />;
+function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded border border-ink-12 bg-white p-5">
       <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">{label}</p>

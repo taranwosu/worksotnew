@@ -1,33 +1,19 @@
 # WorkSoy — Test Credentials
 
-## JWT users
-| Role | Email | Password |
-|---|---|---|
-| Client | `alice@worksoy.com` | `Passw0rd!` |
-| Expert | `expert1@worksoy.com` | `Passw0rd!` |
-| Admin  | `admin@worksoy.com` | `WorkSoy!Admin2026` |
+These accounts are seeded on every backend boot via `ensure_admin_seeded()` (env-driven) and the `seed.py` script for experts. Update this file whenever any auth credential is changed.
 
-The admin account is seeded automatically on backend startup.
+## Admin
+- Email: `admin@worksoy.com`
+- Password: `WorkSoy!Admin2026`
+- Source of truth: `/app/backend/.env` → `ADMIN_EMAIL`, `ADMIN_PASSWORD`
 
-## Admin console
-- Login page: `/admin/login`
-- Dashboard:  `/admin` (redirects to /admin/login if not authenticated as admin)
+## Pre-existing test user (vetting in progress)
+- Email: `vetexpert1@worksoy.com`
+- Password: `Passw0rd!`
+- Role: expert (profile created, vetting stage = `language_personality`)
 
-## Stripe (test mode)
-`STRIPE_API_KEY=sk_test_emergent` is in `/app/backend/.env`. Use any Stripe test card (e.g. `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP) at checkout.
-
-## Quick E2E flow
-1. Sign in as Alice (client) → /post-request → submit a brief
-2. Sign out → Sign up as a new user with role=`expert` → /onboarding/expert → publish profile → /briefs → send a proposal
-3. Sign back in as Alice → /dashboard → open brief → "Accept & open contract"
-4. On contract page: "Fund milestone" → Stripe test card → redirected back → milestone status = funded
-5. Switch to expert account → "Mark delivered"
-6. Switch back to Alice → "Release to expert"
-
-## API helpers
-
-```bash
-API=$REACT_APP_BACKEND_URL
-curl -s -X POST $API/api/auth/login -H "Content-Type: application/json" \
-  -d '{"email":"admin@worksoy.com","password":"WorkSoy!Admin2026"}'
-```
+## Notes for testing agent
+- Register a **fresh** expert via POST `/api/auth/register` → then POST `/api/experts/me` to seed a profile → vetting application auto-starts at `language_personality`.
+- Register a **fresh** client via POST `/api/auth/register` with `role: "client"` to test shortlists + saved searches.
+- Admin login flow is identical: POST `/api/auth/login` then use returned `session_token` as `Authorization: Bearer …`.
+- All 25 seeded experts have `vetting_stage="approved"` and remain visible on `/api/experts`.

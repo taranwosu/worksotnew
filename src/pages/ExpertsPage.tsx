@@ -5,6 +5,7 @@ import { CATEGORY_IDS, CATEGORY_LABELS } from "@/data/experts";
 import { fetchExperts } from "@/lib/api";
 import { usePageMeta } from "@/lib/seo";
 import { ExpertCard } from "@/components/ExpertCard";
+import { ShortlistButton } from "@/components/ShortlistButton";
 import {
   Container,
   Eyebrow,
@@ -264,18 +265,23 @@ export function ExpertsPage() {
           ) : view === "grid" ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filtered.map((e) => (
-                <ExpertCard key={e.id} expert={e} />
+                <div key={e.id} className="relative">
+                  <ExpertCard expert={e} />
+                  <div className="absolute right-3 top-3 z-10">
+                    <ShortlistButton expertId={e.id} />
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
             <div className="border-t border-ink-12">
               {filtered.map((e, i) => (
-                <ExpertCard
-                  key={e.id}
-                  expert={e}
-                  layout="row"
-                  index={i}
-                />
+                <div key={e.id} className="relative">
+                  <ExpertCard expert={e} layout="row" index={i} />
+                  <div className="absolute right-4 top-1/2 z-10 -translate-y-1/2">
+                    <ShortlistButton expertId={e.id} size="sm" />
+                  </div>
+                </div>
               ))}
             </div>
           )}

@@ -198,6 +198,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             Become an expert
                           </MenuItem>
                         )}
+                        {hasExpertProfile && (
+                          <MenuItem
+                            to="/vetting"
+                            onClick={() => setProfileOpen(false)}
+                            icon={<UserIcon className="h-4 w-4" />}
+                          >
+                            Vetting status
+                          </MenuItem>
+                        )}
                         {amIAdmin && (
                           <Link
                             to="/admin"

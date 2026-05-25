@@ -12,7 +12,7 @@ export async function initSentry(): Promise<boolean> {
   try {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — optional runtime dependency
-    const Sentry = await import("@sentry/react");
+    const Sentry = await import(/* @vite-ignore */ ("@sentry/react" as string));
     Sentry.init({
       dsn,
       environment: (import.meta.env.VITE_ENVIRONMENT as string | undefined) ?? "development",

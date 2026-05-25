@@ -496,3 +496,186 @@ export async function postDisputeMessage(id: string, body: string, file_id?: str
 export async function getContractDisputes(contractId: string) {
   return req<Dispute[]>(`/api/contracts/${contractId}/disputes`);
 }
+
+// ================= Vetting =================
+export type VettingApplication = {
+  id: string;
+  user_id: string;
+  expert_id?: string | null;
+  stage:
+    | "not_started"
+    | "language_personality"
+    | "skill_quiz"
+    | "screening_call"
+    | "test_project"
+    | "approved"
+    | "rejected";
+  language_answers?: Record<string, unknown> | null;
+  skill_answers?: Record<string, unknown> | null;
+  screening_scheduled_at?: string | null;
+  screening_notes?: string | null;
+  screening_passed?: boolean | null;
+  test_project_id?: string | null;
+  decision_note?: string | null;
+  history: Array<{ stage: string; at: string; by: string; note?: string | null }>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TestProject = {
+  id: string;
+  application_id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  deliverables: string[];
+  due_at?: string | null;
+  status: "assigned" | "submitted" | "passed" | "failed";
+  submitted_at?: string | null;
+  reviewer_notes?: string | null;
+  file_ids: string[];
+  submission_note?: string | null;
+  created_at: string;
+};
+
+export type LanguageTestPayload = {
+  timezone: string;
+  weekly_hours: number;
+  english_self_rating: number;
+  communication_style: string;
+  why_worksoy: string;
+};
+
+export type SkillTestPayload = {
+  case_study: string;
+  portfolio_url?: string;
+  methodology: string;
+};
+
+export async function getMyVetting() {
+  return req<VettingApplication>("/api/vetting/me");
+}
+export async function submitLanguageTest(p: LanguageTestPayload) {
+  return req<VettingApplication>("/api/vetting/language", { method: "POST", body: JSON.stringify(p) });
+}
+export async function submitSkillTest(p: SkillTestPayload) {
+  return req<VettingApplication>("/api/vetting/skill", { method: "POST", body: JSON.stringify(p) });
+}
+export async function getMyTestProject() {
+  return req<TestProject | null>("/api/vetting/test-project");
+}
+export async function submitTestProject(submission_note: string, file_ids: string[]) {
+  return req<TestProject>("/api/vetting/test-project/submit", {
+    method: "POST",
+    body: JSON.stringify({ submission_note, file_ids }),
+  });
+}
+
+// Admin vetting
+export type VettingApplicationRow = {
+  application: VettingApplication;
+  user: { name: string; email: string; picture?: string | null } | null;
+  expert: {
+    id: string;
+    headline: string;
+    category: string;
+    hourlyRate: number;
+    image: string;
+  } | null;
+  test_project: TestProject | null;
+};
+
+export async function adminListVetting(stage?: string) {
+  const qs = stage ? `?stage=${stage}` : "";
+  return req<VettingApplicationRow[]>(`/api/admin/vetting/applications${qs}`);
+}
+export async function adminAdvanceVetting(appId: string, note?: string) {
+  return req<VettingApplication>(`/api/admin/vetting/${appId}/advance`, { method: "POST", body: JSON.stringify({ note }) });
+}
+export async function adminRejectVetting(appId: string, note?: string) {
+  return req<VettingApplication>(`/api/admin/vetting/${appId}/reject`, { method: "POST", body: JSON.stringify({ note }) });
+}
+export async function adminUpdateScreening(appId: string, scheduled_at?: string, notes?: string, passed?: boolean) {
+  return req<VettingApplication>(`/api/admin/vetting/${appId}/screening-call`, {
+    method: "POST",
+    body: JSON.stringify({ scheduled_at, notes, passed }),
+  });
+}
+export async function adminAssignTestProject(
+  appId: string,
+  payload: { title: string; description: string; deliverables: string[]; due_at?: string },
+) {
+  return req<TestProject>(`/api/admin/vetting/${appId}/assign-test-project`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export async function adminReviewTestProject(appId: string, passed: boolean, note?: string) {
+  return req<{ ok: boolean; status: string }>(
+    `/api/admin/vetting/${appId}/test-project/review?passed=${passed}`,
+    { method: "POST", body: JSON.stringify({ note }) },
+  );
+}
+
+// ================= Earnings + Invoices =================
+export type Earnings = {
+  lifetime_released: number;
+  in_escrow: number;
+  pending: number;
+  active_contracts: number;
+  completed_contracts: number;
+};
+export type Invoice = {
+  id: string;
+  milestone_id: string;
+  contract_id: string;
+  brief_title: string;
+  client_name: string;
+  expert_name: string;
+  amount: number;
+  currency: string;
+  issued_at: string;
+};
+export type InvoiceDetail = Invoice & {
+  milestone_title: string;
+  platform_fee: number;
+  net_to_expert: number;
+};
+
+export async function getMyEarnings() { return req<Earnings>("/api/me/earnings"); }
+export async function listMyInvoices() { return req<Invoice[]>("/api/me/invoices"); }
+export async function getInvoice(id: string) { return req<InvoiceDetail>(`/api/invoices/${id}`); }
+
+// ================= Shortlists + Saved searches =================
+export type Shortlist = {
+  id: string;
+  user_id: string;
+  expert_id: string;
+  note?: string | null;
+  created_at: string;
+  expert?: ApiExpert | null;
+};
+export async function listShortlists() { return req<Shortlist[]>("/api/me/shortlists"); }
+export async function addShortlist(expert_id: string, note?: string) {
+  return req<Shortlist>("/api/me/shortlists", { method: "POST", body: JSON.stringify({ expert_id, note }) });
+}
+export async function removeShortlist(expert_id: string) {
+  return req<{ ok: boolean }>(`/api/me/shortlists/${expert_id}`, { method: "DELETE" });
+}
+
+export type SavedSearch = {
+  id: string;
+  user_id: string;
+  name: string;
+  query?: string | null;
+  category?: string | null;
+  sort?: string | null;
+  created_at: string;
+};
+export async function listSavedSearches() { return req<SavedSearch[]>("/api/me/saved-searches"); }
+export async function saveSearch(payload: { name: string; query?: string; category?: string; sort?: string }) {
+  return req<SavedSearch>("/api/me/saved-searches", { method: "POST", body: JSON.stringify(payload) });
+}
+export async function deleteSavedSearch(id: string) {
+  return req<{ ok: boolean }>(`/api/me/saved-searches/${id}`, { method: "DELETE" });
+}
