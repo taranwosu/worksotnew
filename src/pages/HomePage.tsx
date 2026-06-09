@@ -220,66 +220,70 @@ export function HomePage() {
             {/* Right column — portrait collage + ticker */}
             <div className="md:col-span-4">
               <div className="relative md:sticky md:top-24">
-                <div className="relative aspect-[4/5] overflow-hidden rounded border border-ink-12 bg-cream-3">
-                  <img
-                    src={experts[1].image}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                  <div className="absolute left-4 top-4 flex flex-col gap-1.5">
-                    <Tag tone="sun" size="sm" dot>
-                      Available this week
-                    </Tag>
-                    <Tag tone="ink" size="sm">
-                      Shortlist #04-A
-                    </Tag>
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-ink/70 to-transparent p-4 text-cream">
-                    <div>
-                      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cream/70">
-                        Candidate 01
-                      </p>
-                      <p className="mt-0.5 font-display text-[17px] font-medium leading-tight">
-                        {experts[1].name.split(",")[0]}
-                      </p>
-                      <p className="text-[11px] text-cream/80">
-                        {experts[1].specialty}
-                      </p>
+                {featured.length >= 2 && (
+                  <div className="relative aspect-[4/5] overflow-hidden rounded border border-ink-12 bg-cream-3">
+                    <img
+                      src={featured[1].image}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute left-4 top-4 flex flex-col gap-1.5">
+                      <Tag tone="sun" size="sm" dot>
+                        Available this week
+                      </Tag>
+                      <Tag tone="ink" size="sm">
+                        Shortlist #04-A
+                      </Tag>
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono text-[11px] text-cream/60">USD/hr</p>
-                      <p className="font-display text-[22px] font-medium leading-none tabular">
-                        {experts[1].hourlyRate}
-                      </p>
+                    <div className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-ink/70 to-transparent p-4 text-cream">
+                      <div>
+                        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cream/70">
+                          Candidate 01
+                        </p>
+                        <p className="mt-0.5 font-display text-[17px] font-medium leading-tight">
+                          {featured[1].name.split(",")[0]}
+                        </p>
+                        <p className="text-[11px] text-cream/80">
+                          {featured[1].specialty}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono text-[11px] text-cream/60">USD/hr</p>
+                        <p className="font-display text-[22px] font-medium leading-none tabular">
+                          {featured[1].hourlyRate}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Small overlap card */}
-                <div className="absolute -left-4 -bottom-6 hidden w-[180px] rotate-[-3deg] border border-ink-12 bg-cream p-3 shadow-[0_12px_32px_-14px_rgba(26,26,26,0.35)] md:block">
-                  <div className="flex items-center gap-2">
-                    <img
-                      src={experts[3].image}
-                      alt=""
-                      className="h-8 w-8 rounded-full object-cover"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate font-display text-[12px] font-semibold">
-                        {experts[3].name.split(",")[0]}
-                      </p>
-                      <p className="truncate text-[10px] text-ink-60">
-                        {experts[3].title}
-                      </p>
+                {featured.length >= 3 && (
+                  <div className="absolute -left-4 -bottom-6 hidden w-[180px] rotate-[-3deg] border border-ink-12 bg-cream p-3 shadow-[0_12px_32px_-14px_rgba(26,26,26,0.35)] md:block">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={featured[2].image}
+                        alt=""
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate font-display text-[12px] font-semibold">
+                          {featured[2].name.split(",")[0]}
+                        </p>
+                        <p className="truncate text-[10px] text-ink-60">
+                          {featured[2].title}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-ink-60">
+                      <span className="flex items-center gap-1">
+                        <Star className="h-2.5 w-2.5 fill-sun text-sun" />
+                        {featured[2].rating} · {featured[2].reviewCount}
+                      </span>
+                      <span className="font-mono">${featured[2].hourlyRate}/hr</span>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-ink-60">
-                    <span className="flex items-center gap-1">
-                      <Star className="h-2.5 w-2.5 fill-sun text-sun" />
-                      {experts[3].rating} · {experts[3].reviewCount}
-                    </span>
-                    <span className="font-mono">${experts[3].hourlyRate}/hr</span>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
