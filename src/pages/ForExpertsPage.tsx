@@ -27,9 +27,9 @@ const perks = [
   {
     num: "01",
     icon: Wallet,
-    title: "8% operator fee, and it is the only fee",
+    title: "Flat 15% platform fee, and it is the only fee",
     body:
-      "No lead charges, no payout fees, no bidding credits. Your rate stays your rate; we take a transparent cut on milestone acceptance.",
+      "No lead charges, no payout fees, no bidding credits. Your rate stays your rate; we take a flat 15% on milestone acceptance — you keep 85%.",
   },
   {
     num: "02",
@@ -82,7 +82,7 @@ const timeline = [
 ];
 
 const stats = [
-  { v: "8%", l: "Operator fee — flat" },
+  { v: "15%", l: "Platform fee — flat" },
   { v: "<7%", l: "Applicant acceptance rate" },
   { v: "48 h", l: "Acceptance-to-payout" },
   { v: "$264k", l: "Median annual network billings" },

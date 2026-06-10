@@ -70,13 +70,9 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 # Public app URL used for links inside transactional emails (no trailing slash).
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://worksoy.com").rstrip("/")
 PASSWORD_RESET_TTL_MINUTES = int(os.environ.get("PASSWORD_RESET_TTL_MINUTES", "60"))
-# Platform commission taken on every released milestone. Invoices and expert
-# payouts must derive from the same rate so the books always reconcile.
-PLATFORM_FEE_RATE = 0.15
-# Stripe REST API, used directly (via httpx) for Connect payouts. The checkout
-# flow goes through the emergentintegrations wrapper; transfers and account
-# onboarding are not covered by it.
-STRIPE_API_BASE = "https://api.stripe.com/v1"
+# Platform service fee applied to released milestones (expert's invoice).
+# Configurable so the rate can be tuned without a code change.
+PLATFORM_FEE_RATE = float(os.environ.get("PLATFORM_FEE_RATE", "0.15"))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
@@ -2765,8 +2761,152 @@ async def my_invoices(user: User = Depends(get_current_user)):
     return out
 
 
-@app.get("/api/invoices/{invoice_id}")
-async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
+def _render_invoice_pdf(inv: dict) -> bytes:
+    """Render a one-page branded invoice/receipt PDF. reportlab is imported
+    lazily so the app still boots if the dependency is missing in a given
+    environment (the endpoint then returns 503)."""
+    try:
+        from io import BytesIO
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.units import inch
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        )
+    except ImportError as e:  # pragma: no cover - depends on deploy image
+        raise RuntimeError(
+            "PDF generation is unavailable (reportlab not installed)."
+        ) from e
+
+    ink = colors.HexColor("#1A1A1A")
+    sun = colors.HexColor("#FFC83D")
+    muted = colors.HexColor("#6B6B6B")
+    line = colors.HexColor("#E2E0DA")
+
+    currency = (inv.get("currency") or "USD").upper()
+    issued = inv.get("issued_at") or ""
+    try:
+        issued_disp = datetime.fromisoformat(issued).strftime("%B %d, %Y") if issued else ""
+    except (ValueError, TypeError):
+        issued_disp = str(issued)
+
+    def money(v: float) -> str:
+        return f"{currency} {v:,.2f}"
+
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=ink, fontSize=24, spaceAfter=2, alignment=0)
+    label = ParagraphStyle("label", parent=styles["Normal"], textColor=muted, fontSize=8, leading=11, fontName="Helvetica")
+    value = ParagraphStyle("value", parent=styles["Normal"], textColor=ink, fontSize=10.5, leading=14, fontName="Helvetica")
+    small = ParagraphStyle("small", parent=styles["Normal"], textColor=muted, fontSize=8, leading=12)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=LETTER,
+        leftMargin=0.85 * inch, rightMargin=0.85 * inch,
+        topMargin=0.85 * inch, bottomMargin=0.7 * inch,
+        title=f"WorkSoy Invoice {inv['id']}",
+    )
+    story: list = []
+
+    # Header: wordmark + invoice meta
+    header = Table(
+        [[
+            Paragraph('worksoy<font color="#FFC83D">.</font>', h1),
+            Paragraph(
+                f'<font color="#6B6B6B" size="8">INVOICE</font><br/>'
+                f'<font size="11">{inv["id"]}</font><br/>'
+                f'<font color="#6B6B6B" size="8">Issued {issued_disp}</font>',
+                ParagraphStyle("right", parent=value, alignment=2),
+            ),
+        ]],
+        colWidths=[3.4 * inch, 3.0 * inch],
+    )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story += [header, Spacer(1, 6)]
+    story += [Table([[""]], colWidths=[6.4 * inch], style=TableStyle([
+        ("LINEABOVE", (0, 0), (-1, -1), 1.2, sun),
+    ])), Spacer(1, 16)]
+
+    # Parties
+    parties = Table(
+        [[
+            Paragraph("FROM", label), Paragraph("BILLED TO", label),
+        ], [
+            Paragraph(f'{inv["expert_name"]}<br/><font color="#6B6B6B" size="8">Independent contractor · via WorkSoy</font>', value),
+            Paragraph(f'{inv["client_name"]}', value),
+        ]],
+        colWidths=[3.2 * inch, 3.2 * inch],
+    )
+    parties.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ("TOPPADDING", (0, 1), (-1, 1), 2),
+    ]))
+    story += [parties, Spacer(1, 18)]
+
+    # Line items
+    rows = [
+        [Paragraph("DESCRIPTION", label), Paragraph("AMOUNT", ParagraphStyle("r", parent=label, alignment=2))],
+        [
+            Paragraph(f'{inv["milestone_title"]}<br/><font color="#6B6B6B" size="8">{inv["brief_title"]} · contract {inv["contract_id"]}</font>', value),
+            Paragraph(money(inv["amount"]), ParagraphStyle("rv", parent=value, alignment=2)),
+        ],
+    ]
+    items = Table(rows, colWidths=[4.6 * inch, 1.8 * inch])
+    items.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, line),
+        ("LINEBELOW", (0, 1), (-1, 1), 0.6, line),
+        ("TOPPADDING", (0, 1), (-1, 1), 8),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+    ]))
+    story += [items, Spacer(1, 12)]
+
+    # Totals
+    totals = Table(
+        [
+            [Paragraph("Subtotal", value), Paragraph(money(inv["amount"]), ParagraphStyle("r", parent=value, alignment=2))],
+            [Paragraph(f'WorkSoy platform fee ({PLATFORM_FEE_RATE * 100:.1f}%)', value),
+             Paragraph(f'− {money(inv["platform_fee"])}', ParagraphStyle("r", parent=value, alignment=2))],
+            [Paragraph("<b>Net to expert</b>", value),
+             Paragraph(f'<b>{money(inv["net_to_expert"])}</b>', ParagraphStyle("r", parent=value, alignment=2))],
+        ],
+        colWidths=[4.6 * inch, 1.8 * inch],
+    )
+    totals.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LINEABOVE", (0, 2), (-1, 2), 1, ink),
+        ("TOPPADDING", (0, 2), (-1, 2), 8),
+    ]))
+    story += [totals, Spacer(1, 28)]
+
+    story += [Paragraph(
+        "Paid via WorkSoy escrow on milestone release. This document is a receipt of payment "
+        "for the work described above. WorkSoy Networks, Inc. facilitates payment between the "
+        "client and the expert and is not a party to the underlying engagement.",
+        small,
+    )]
+    story += [Spacer(1, 8), Paragraph(
+        "Questions? billing@worksoy.com", small,
+    )]
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+async def _resolve_invoice(invoice_id: str, user: User) -> dict:
+    """Shared invoice assembly + access check for the JSON and PDF endpoints."""
     if not invoice_id.startswith("inv_"):
         raise HTTPException(status_code=404, detail="Invoice not found")
     milestone_id = invoice_id[len("inv_"):]
@@ -2778,6 +2918,9 @@ async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Invoice not found")
     if user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin":
         raise HTTPException(status_code=403, detail="Not authorised")
+    issued = m.get("released_at") or _now()
+    amount = float(m["amount"])
+    fee = round(amount * PLATFORM_FEE_RATE, 2)
     return {
         "id": invoice_id,
         "milestone_id": m["id"],
@@ -2786,12 +2929,32 @@ async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
         "brief_title": c["brief_title"],
         "client_name": c["client_name"],
         "expert_name": c["expert_name"],
-        "amount": float(m["amount"]),
+        "amount": amount,
         "currency": c.get("currency", "USD"),
-        "issued_at": (m.get("released_at") or _now()).isoformat() if isinstance(m.get("released_at") or _now(), datetime) else m.get("released_at"),
-        "platform_fee": round(float(m["amount"]) * PLATFORM_FEE_RATE, 2),
-        "net_to_expert": round(float(m["amount"]) * (1 - PLATFORM_FEE_RATE), 2),
+        "issued_at": issued.isoformat() if isinstance(issued, datetime) else issued,
+        "platform_fee": fee,
+        "net_to_expert": round(amount - fee, 2),
     }
+
+
+@app.get("/api/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
+    return await _resolve_invoice(invoice_id, user)
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: str, user: User = Depends(get_current_user)):
+    inv = await _resolve_invoice(invoice_id, user)
+    try:
+        pdf = _render_invoice_pdf(inv)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    filename = f"worksoy-invoice-{invoice_id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # =========================================================================
