@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { DisputeThread } from "@/components/DisputeThread";
 import { AdminVettingPanel } from "@/components/AdminVettingPanel";
+import { AdminManagedPanel } from "@/components/managed/AdminManagedPanel";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 import { usePageMeta } from "@/lib/seo";
@@ -45,7 +46,7 @@ export function AdminPage() {
   const [experts, setExperts] = useState<ApiExpert[]>([]);
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
-  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "vetting">("vetting");
+  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "vetting" | "managed">("vetting");
   const [loading, setLoading] = useState(true);
   const [openDispute, setOpenDispute] = useState<string | null>(null);
 
@@ -132,7 +133,7 @@ export function AdminPage() {
         )}
 
         <div className="mt-10 flex gap-2 border-b border-cream/10">
-          {(["vetting", "queue", "all", "briefs", "disputes"] as const).map((t) => (
+          {(["vetting", "managed", "queue", "all", "briefs", "disputes"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -144,6 +145,8 @@ export function AdminPage() {
             >
               {t === "vetting"
                 ? "Vetting pipeline"
+                : t === "managed"
+                ? "Managed service"
                 : t === "queue"
                 ? `Legacy vet queue (${unverified.length})`
                 : t === "all"
@@ -159,6 +162,8 @@ export function AdminPage() {
           <div className="mt-10 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-cream/40" /></div>
         ) : tab === "vetting" ? (
           <div className="mt-8"><AdminVettingPanel /></div>
+        ) : tab === "managed" ? (
+          <div className="mt-8"><AdminManagedPanel /></div>
         ) : tab === "briefs" ? (
           <div className="mt-8 overflow-hidden rounded border border-cream/10">
             {briefs.length === 0 ? (

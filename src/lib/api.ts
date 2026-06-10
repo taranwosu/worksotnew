@@ -406,13 +406,14 @@ export type FileMeta = {
   created_at: string;
 };
 
-export async function uploadFile(file: File, scope: { conversation_id?: string; contract_id?: string; milestone_id?: string; dispute_id?: string }): Promise<FileMeta> {
+export async function uploadFile(file: File, scope: { conversation_id?: string; contract_id?: string; milestone_id?: string; dispute_id?: string; managed_task_id?: string }): Promise<FileMeta> {
   const form = new FormData();
   form.append("file", file);
   if (scope.conversation_id) form.append("conversation_id", scope.conversation_id);
   if (scope.contract_id) form.append("contract_id", scope.contract_id);
   if (scope.milestone_id) form.append("milestone_id", scope.milestone_id);
   if (scope.dispute_id) form.append("dispute_id", scope.dispute_id);
+  if (scope.managed_task_id) form.append("managed_task_id", scope.managed_task_id);
   const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/files/upload`, {
     method: "POST",
     credentials: "include",
@@ -696,6 +697,434 @@ export async function saveSearch(payload: { name: string; query?: string; catego
 }
 export async function deleteSavedSearch(id: string) {
   return req<{ ok: boolean }>(`/api/me/saved-searches/${id}`, { method: "DELETE" });
+}
+
+// ================= Managed service =================
+export type PoolMember = {
+  id: string;
+  user_id: string;
+  expert_id?: string | null;
+  status: "active" | "suspended" | "removed";
+  cost_rate: number;
+  cost_rate_type: "hourly" | "per_task";
+  currency: string;
+  internal_notes?: string | null;
+  performance_score: number;
+  performance_count: number;
+  created_at: string;
+};
+
+export type PoolMemberRow = {
+  member: PoolMember;
+  user: { name: string; email: string; picture?: string | null } | null;
+  expert: { id: string; headline: string; category: string; image: string; rating: number; reviewCount: number } | null;
+  open_tasks: number;
+};
+
+export type EligibleExpert = {
+  id: string;
+  user_id: string;
+  name: string;
+  headline: string;
+  category: string;
+  hourlyRate: number;
+  image: string;
+  rating: number;
+  reviewCount: number;
+};
+
+export type ManagedClient = {
+  id: string;
+  owner_user_id: string;
+  company_name: string;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  plan_type: "monthly_retainer" | "per_task";
+  plan_rate: number;
+  currency: string;
+  plan_notes?: string | null;
+  status: "active" | "paused" | "churned";
+  internal_notes?: string | null;
+  created_at: string;
+};
+
+export type ManagedClientRow = {
+  client: ManagedClient;
+  owner: { name: string; email: string } | null;
+  billing: { billed: number; paid: number; unpaid: number };
+  open_tasks: number;
+};
+
+export type ManagedCharge = {
+  id: string;
+  client_id: string;
+  description: string;
+  amount: number;
+  currency: string;
+  due_date?: string | null;
+  status: "unpaid" | "paid";
+  paid_at?: string | null;
+  task_id?: string | null;
+  created_at: string;
+};
+
+export type ManagedTaskStatus =
+  | "requested"
+  | "accepted"
+  | "assigned"
+  | "in_progress"
+  | "submitted"
+  | "revision_requested"
+  | "delivered"
+  | "completed"
+  | "on_hold"
+  | "cancelled";
+
+export type ManagedAttachment = { id: string; filename: string; size: number; content_type: string };
+
+export type ManagedTask = {
+  id: string;
+  client_id: string;
+  client_user_id: string;
+  title: string;
+  description: string;
+  priority: "low" | "normal" | "high";
+  due_date?: string | null;
+  status: ManagedTaskStatus;
+  assignee_pool_member_id?: string | null;
+  assignee_user_id?: string | null;
+  admin_notes?: string | null;
+  company_name?: string | null;
+  created_at: string;
+  accepted_at?: string | null;
+  assigned_at?: string | null;
+  submitted_at?: string | null;
+  delivered_at?: string | null;
+  completed_at?: string | null;
+};
+
+export type ManagedTaskRow = {
+  task: ManagedTask;
+  company_name: string | null;
+  assignee_name: string | null;
+};
+
+export type ManagedTaskEvent = {
+  id: string;
+  task_id?: string;
+  author_id?: string;
+  author_name: string;
+  kind: "comment" | "status_change" | "assignment" | "deliverable";
+  visibility?: "client" | "internal";
+  body?: string | null;
+  meta?: { from_status?: string; to_status?: string; deliverable_id?: string } | null;
+  created_at: string;
+};
+
+export type ManagedDeliverable = {
+  id: string;
+  task_id: string;
+  uploaded_by: string;
+  note?: string | null;
+  file_ids: string[];
+  files?: ManagedAttachment[];
+  status: "pending_review" | "approved" | "rejected";
+  version: number;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  created_at: string;
+};
+
+export type PoolRating = {
+  id: string;
+  pool_member_id: string;
+  task_id: string;
+  score: number;
+  notes?: string | null;
+  task_title?: string | null;
+  created_at: string;
+};
+
+export type AdminManagedTaskDetail = {
+  task: ManagedTask;
+  client: ManagedClient | null;
+  assignee: { member: PoolMember; user: { name: string; email: string; picture?: string | null } | null } | null;
+  attachments: ManagedAttachment[];
+  deliverables: ManagedDeliverable[];
+  events: ManagedTaskEvent[];
+  rating: PoolRating | null;
+};
+
+export type ManagedStats = {
+  pool_active: number;
+  clients_active: number;
+  tasks_requested: number;
+  tasks_submitted: number;
+  tasks_in_flight: number;
+  revenue_unpaid: number;
+  revenue_paid: number;
+};
+
+// Client-portal task shapes (back-office statuses are collapsed server-side)
+export type ClientTaskStatus =
+  | "requested" | "queued" | "in_progress" | "delivered" | "completed" | "on_hold" | "cancelled";
+
+export type ClientTask = {
+  id: string;
+  title: string;
+  description: string;
+  priority: "low" | "normal" | "high";
+  due_date?: string | null;
+  status: ClientTaskStatus;
+  assignee_name?: string | null;
+  created_at: string;
+  delivered_at?: string | null;
+  completed_at?: string | null;
+};
+
+export type ClientDeliverable = {
+  id: string;
+  note?: string | null;
+  version: number;
+  files: ManagedAttachment[];
+  created_at: string;
+};
+
+export type ClientTaskDetail = ClientTask & {
+  attachments: ManagedAttachment[];
+  deliverables: ClientDeliverable[];
+  events: ManagedTaskEvent[];
+};
+
+export type PoolTaskDetail = {
+  task: ManagedTask;
+  attachments: ManagedAttachment[];
+  deliverables: ManagedDeliverable[];
+  events: ManagedTaskEvent[];
+};
+
+// --- Admin: pool
+export async function adminListPool(status?: string) {
+  const qs = status ? `?status=${status}` : "";
+  return req<PoolMemberRow[]>(`/api/admin/managed/pool${qs}`);
+}
+export async function adminListPoolEligible() {
+  return req<EligibleExpert[]>("/api/admin/managed/pool/eligible");
+}
+export async function adminAddPoolMember(payload: {
+  expert_id: string;
+  cost_rate: number;
+  cost_rate_type?: "hourly" | "per_task";
+  currency?: string;
+  internal_notes?: string;
+}) {
+  return req<PoolMember>("/api/admin/managed/pool", { method: "POST", body: JSON.stringify(payload) });
+}
+export async function adminUpdatePoolMember(id: string, payload: {
+  cost_rate?: number;
+  cost_rate_type?: "hourly" | "per_task";
+  currency?: string;
+  internal_notes?: string;
+}) {
+  return req<PoolMember>(`/api/admin/managed/pool/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export async function adminSetPoolMemberStatus(id: string, status: "active" | "suspended" | "removed") {
+  return req<{ ok: boolean; in_flight_tasks: number }>(`/api/admin/managed/pool/${id}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
+export async function adminGetPoolMember(id: string) {
+  return req<{
+    member: PoolMember;
+    user: { name: string; email: string; picture?: string | null } | null;
+    expert: { id: string; headline: string; category: string; image: string; rating: number; reviewCount: number } | null;
+    ratings: PoolRating[];
+    tasks: Array<Pick<ManagedTask, "id" | "title" | "status" | "client_id" | "created_at" | "completed_at">>;
+  }>(`/api/admin/managed/pool/${id}`);
+}
+
+// --- Admin: managed clients & billing
+export async function adminListManagedClients() {
+  return req<ManagedClientRow[]>("/api/admin/managed/clients");
+}
+export async function adminCreateManagedClient(payload: {
+  owner_email: string;
+  company_name: string;
+  contact_name?: string;
+  contact_email?: string;
+  plan_type?: "monthly_retainer" | "per_task";
+  plan_rate: number;
+  currency?: string;
+  plan_notes?: string;
+  internal_notes?: string;
+}) {
+  return req<ManagedClient>("/api/admin/managed/clients", { method: "POST", body: JSON.stringify(payload) });
+}
+export async function adminUpdateManagedClient(id: string, payload: Partial<Omit<ManagedClient, "id" | "owner_user_id" | "created_at">>) {
+  return req<ManagedClient>(`/api/admin/managed/clients/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export async function adminListCharges(clientId: string) {
+  return req<ManagedCharge[]>(`/api/admin/managed/clients/${clientId}/charges`);
+}
+export async function adminAddCharge(clientId: string, payload: {
+  description: string;
+  amount: number;
+  currency?: string;
+  due_date?: string;
+  task_id?: string;
+}) {
+  return req<ManagedCharge>(`/api/admin/managed/clients/${clientId}/charges`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export async function adminSetChargeStatus(chargeId: string, status: "unpaid" | "paid") {
+  return req<ManagedCharge>(`/api/admin/managed/charges/${chargeId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+export async function adminDeleteCharge(chargeId: string) {
+  return req<{ ok: boolean }>(`/api/admin/managed/charges/${chargeId}`, { method: "DELETE" });
+}
+
+// --- Admin: task board
+export async function adminListManagedTasks(params: { status?: string; client_id?: string; assignee?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.client_id) qs.set("client_id", params.client_id);
+  if (params.assignee) qs.set("assignee", params.assignee);
+  return req<ManagedTaskRow[]>(`/api/admin/managed/tasks?${qs.toString()}`);
+}
+export async function adminGetManagedTask(id: string) {
+  return req<AdminManagedTaskDetail>(`/api/admin/managed/tasks/${id}`);
+}
+export async function adminAcceptTask(id: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/accept`, { method: "POST" });
+}
+export async function adminAssignTask(id: string, pool_member_id: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/assign`, {
+    method: "POST",
+    body: JSON.stringify({ pool_member_id }),
+  });
+}
+export async function adminUnassignTask(id: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/unassign`, { method: "POST" });
+}
+export async function adminHoldTask(id: string, note?: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/hold`, { method: "POST", body: JSON.stringify({ note }) });
+}
+export async function adminResumeTask(id: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/resume`, { method: "POST" });
+}
+export async function adminCancelTask(id: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/cancel`, { method: "POST" });
+}
+export async function adminCompleteTask(id: string) {
+  return req<ManagedTask>(`/api/admin/managed/tasks/${id}/complete`, { method: "POST" });
+}
+export async function adminReviewDeliverable(deliverableId: string, action: "approve" | "reject", note?: string) {
+  return req<ManagedDeliverable>(`/api/admin/managed/deliverables/${deliverableId}/review`, {
+    method: "POST",
+    body: JSON.stringify({ action, note }),
+  });
+}
+export async function adminRateManagedTask(taskId: string, score: number, notes?: string) {
+  return req<PoolRating>(`/api/admin/managed/tasks/${taskId}/rate`, {
+    method: "POST",
+    body: JSON.stringify({ score, notes }),
+  });
+}
+export async function adminManagedTaskComment(taskId: string, body: string, visibility: "client" | "internal") {
+  return req<ManagedTaskEvent>(`/api/admin/managed/tasks/${taskId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, visibility }),
+  });
+}
+export async function adminUpdateTaskNotes(taskId: string, note: string) {
+  return req<{ ok: boolean }>(`/api/admin/managed/tasks/${taskId}/notes`, {
+    method: "PATCH",
+    body: JSON.stringify({ note }),
+  });
+}
+export async function adminManagedStats() {
+  return req<ManagedStats>("/api/admin/managed/stats");
+}
+
+// --- Client portal
+export async function fetchMyManagedClient() {
+  try {
+    return await req<ManagedClient | null>("/api/managed/me");
+  } catch {
+    return null;
+  }
+}
+export async function createManagedTask(payload: {
+  title: string;
+  description: string;
+  priority?: "low" | "normal" | "high";
+  due_date?: string;
+}) {
+  return req<ClientTask>("/api/managed/tasks", { method: "POST", body: JSON.stringify(payload) });
+}
+export async function listMyManagedTasks() {
+  return req<ClientTask[]>("/api/managed/tasks");
+}
+export async function fetchManagedTask(id: string) {
+  return req<ClientTaskDetail>(`/api/managed/tasks/${id}`);
+}
+export async function cancelManagedTask(id: string) {
+  return req<ClientTask>(`/api/managed/tasks/${id}/cancel`, { method: "POST" });
+}
+export async function requestTaskRevision(id: string, note: string) {
+  return req<ClientTask>(`/api/managed/tasks/${id}/request-revision`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+export async function confirmTaskCompletion(id: string) {
+  return req<ClientTask>(`/api/managed/tasks/${id}/complete`, { method: "POST" });
+}
+export async function addManagedTaskComment(id: string, body: string) {
+  return req<ManagedTaskEvent>(`/api/managed/tasks/${id}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, visibility: "client" }),
+  });
+}
+export async function fetchMyManagedBilling() {
+  return req<ManagedCharge[]>("/api/managed/billing");
+}
+
+// --- Freelancer pool workspace
+export async function fetchMyPoolMembership() {
+  try {
+    return await req<PoolMember | null>("/api/pool/me");
+  } catch {
+    return null;
+  }
+}
+export async function listPoolTasks() {
+  return req<ManagedTask[]>("/api/pool/tasks");
+}
+export async function fetchPoolTask(id: string) {
+  return req<PoolTaskDetail>(`/api/pool/tasks/${id}`);
+}
+export async function startPoolTask(id: string) {
+  return req<ManagedTask>(`/api/pool/tasks/${id}/start`, { method: "POST" });
+}
+export async function submitPoolDeliverable(id: string, payload: { note?: string; file_ids: string[] }) {
+  return req<ManagedDeliverable>(`/api/pool/tasks/${id}/deliverables`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export async function addPoolTaskComment(id: string, body: string, visibility: "client" | "internal") {
+  return req<ManagedTaskEvent>(`/api/pool/tasks/${id}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, visibility }),
+  });
 }
 
 // ================= Public process / transparency stats =================

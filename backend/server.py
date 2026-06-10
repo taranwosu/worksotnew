@@ -1785,6 +1785,7 @@ class FileMeta(BaseModel):
     contract_id: Optional[str] = None
     milestone_id: Optional[str] = None
     dispute_id: Optional[str] = None
+    managed_task_id: Optional[str] = None
     created_at: datetime
 
 
@@ -1794,6 +1795,7 @@ async def _authorize_file_scope(
     contract_id: Optional[str],
     milestone_id: Optional[str],
     dispute_id: Optional[str] = None,
+    managed_task_id: Optional[str] = None,
 ) -> None:
     if conversation_id:
         c = await db.conversations.find_one({"id": conversation_id}, {"_id": 0, "participants": 1})
@@ -1817,6 +1819,14 @@ async def _authorize_file_scope(
         c = await db.contracts.find_one({"id": d["contract_id"]}, {"_id": 0, "client_user_id": 1, "expert_user_id": 1})
         if not c or (user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin"):
             raise HTTPException(status_code=403, detail="Not a party to this dispute")
+    if managed_task_id:
+        t = await db.managed_tasks.find_one(
+            {"id": managed_task_id}, {"_id": 0, "client_user_id": 1, "assignee_user_id": 1}
+        )
+        if not t:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if user.role != "admin" and user.user_id not in (t.get("client_user_id"), t.get("assignee_user_id")):
+            raise HTTPException(status_code=403, detail="Not a party to this managed task")
 
 
 @app.post("/api/files/upload", response_model=FileMeta)
@@ -1826,9 +1836,10 @@ async def upload_file(
     contract_id: Optional[str] = Form(None),
     milestone_id: Optional[str] = Form(None),
     dispute_id: Optional[str] = Form(None),
+    managed_task_id: Optional[str] = Form(None),
     user: User = Depends(get_current_user),
 ):
-    await _authorize_file_scope(user, conversation_id, contract_id, milestone_id, dispute_id)
+    await _authorize_file_scope(user, conversation_id, contract_id, milestone_id, dispute_id, managed_task_id)
     # Content-type / extension allowlist — reject anything that isn't a known
     # document, image, archive or design file before writing it to disk.
     ext = _Path(file.filename or "").suffix.lower()
@@ -1866,6 +1877,8 @@ async def upload_file(
         "contract_id": contract_id,
         "milestone_id": milestone_id,
         "dispute_id": dispute_id,
+        "managed_task_id": managed_task_id,
+        "managed_deliverable_id": None,
         "storage_path": str(dest),
         "created_at": _now(),
     }
@@ -1880,7 +1893,22 @@ async def download_file(fid: str, user: User = Depends(get_current_user)):
     f = await db.files.find_one({"id": fid}, {"_id": 0})
     if not f:
         raise HTTPException(status_code=404, detail="File not found")
-    await _authorize_file_scope(user, f.get("conversation_id"), f.get("contract_id"), f.get("milestone_id"))
+    await _authorize_file_scope(
+        user, f.get("conversation_id"), f.get("contract_id"), f.get("milestone_id"),
+        f.get("dispute_id"), f.get("managed_task_id"),
+    )
+    # Deliverable files reach the managed client only after admin approval —
+    # being a party to the task is not enough.
+    if f.get("managed_task_id") and f.get("managed_deliverable_id") and user.role != "admin":
+        t = await db.managed_tasks.find_one(
+            {"id": f["managed_task_id"]}, {"_id": 0, "client_user_id": 1, "assignee_user_id": 1}
+        )
+        if t and user.user_id == t.get("client_user_id") and user.user_id != t.get("assignee_user_id"):
+            d = await db.managed_deliverables.find_one(
+                {"id": f["managed_deliverable_id"]}, {"_id": 0, "status": 1}
+            )
+            if not d or d["status"] != "approved":
+                raise HTTPException(status_code=403, detail="This deliverable has not been released yet")
     path = _Path(f["storage_path"])
     if not path.exists():
         raise HTTPException(status_code=410, detail="File no longer available")
@@ -2964,6 +2992,1282 @@ async def process_stats():
 
 
 # =========================================================================
+# Managed service — back-office contractor / subscription model.
+# Companies on a managed plan never hire directly: admins curate a pool of
+# vetted freelancers, take task requests from managed clients, assign pool
+# members, review deliverables before release and log off-platform charges.
+# =========================================================================
+MANAGED_TASK_STATUSES = {
+    "requested", "accepted", "assigned", "in_progress", "submitted",
+    "revision_requested", "delivered", "completed", "on_hold", "cancelled",
+}
+# Allowed transitions; on_hold resumes are handled separately because the
+# target comes from the task's stored hold_resume_status.
+_MANAGED_TRANSITIONS: dict[str, set] = {
+    "requested": {"accepted", "cancelled"},
+    "accepted": {"assigned", "on_hold", "cancelled"},
+    "assigned": {"in_progress", "accepted", "on_hold", "cancelled"},
+    "in_progress": {"submitted", "on_hold", "cancelled"},
+    "submitted": {"delivered", "revision_requested", "cancelled"},
+    "revision_requested": {"submitted", "on_hold", "cancelled"},
+    "delivered": {"completed", "revision_requested", "cancelled"},
+    "on_hold": {"cancelled"},
+    "completed": set(),
+    "cancelled": set(),
+}
+_MANAGED_STATUS_TIMESTAMPS = {
+    "accepted": "accepted_at",
+    "assigned": "assigned_at",
+    "submitted": "submitted_at",
+    "delivered": "delivered_at",
+    "completed": "completed_at",
+    "cancelled": "cancelled_at",
+}
+
+
+def _managed_client_status(status: str) -> str:
+    """Collapse back-office statuses into what the client portal shows.
+    Clients see queue/progress/delivery — not the internal review machinery
+    (submitted, revision_requested etc. all read as work in progress)."""
+    if status in ("assigned", "in_progress", "submitted", "revision_requested"):
+        return "in_progress"
+    if status == "accepted":
+        return "queued"
+    return status
+
+
+# --- Input schemas
+class ManagedPoolAddIn(BaseModel):
+    expert_id: str
+    cost_rate: float = Field(gt=0)
+    cost_rate_type: Literal["hourly", "per_task"] = "hourly"
+    currency: str = "USD"
+    internal_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ManagedPoolUpdateIn(BaseModel):
+    cost_rate: Optional[float] = Field(default=None, gt=0)
+    cost_rate_type: Optional[Literal["hourly", "per_task"]] = None
+    currency: Optional[str] = None
+    internal_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ManagedPoolStatusIn(BaseModel):
+    status: Literal["active", "suspended", "removed"]
+
+
+class ManagedClientCreateIn(BaseModel):
+    owner_email: EmailStr
+    company_name: str = Field(min_length=2, max_length=140)
+    contact_name: Optional[str] = Field(default=None, max_length=120)
+    contact_email: Optional[EmailStr] = None
+    plan_type: Literal["monthly_retainer", "per_task"] = "monthly_retainer"
+    plan_rate: float = Field(gt=0)
+    currency: str = "USD"
+    plan_notes: Optional[str] = Field(default=None, max_length=2000)
+    internal_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ManagedClientUpdateIn(BaseModel):
+    company_name: Optional[str] = Field(default=None, min_length=2, max_length=140)
+    contact_name: Optional[str] = Field(default=None, max_length=120)
+    contact_email: Optional[EmailStr] = None
+    plan_type: Optional[Literal["monthly_retainer", "per_task"]] = None
+    plan_rate: Optional[float] = Field(default=None, gt=0)
+    currency: Optional[str] = None
+    plan_notes: Optional[str] = Field(default=None, max_length=2000)
+    internal_notes: Optional[str] = Field(default=None, max_length=2000)
+    status: Optional[Literal["active", "paused", "churned"]] = None
+
+
+class ManagedChargeIn(BaseModel):
+    description: str = Field(min_length=2, max_length=300)
+    amount: float = Field(gt=0)
+    currency: str = "USD"
+    due_date: Optional[datetime] = None
+    task_id: Optional[str] = None
+
+
+class ManagedChargeStatusIn(BaseModel):
+    status: Literal["unpaid", "paid"]
+
+
+class ManagedTaskIn(BaseModel):
+    title: str = Field(min_length=3, max_length=140)
+    description: str = Field(min_length=10, max_length=8000)
+    priority: Literal["low", "normal", "high"] = "normal"
+    due_date: Optional[datetime] = None
+
+
+class ManagedAssignIn(BaseModel):
+    pool_member_id: str
+
+
+class ManagedHoldIn(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ManagedDeliverableIn(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=4000)
+    file_ids: List[str] = Field(min_length=1)
+
+
+class ManagedDeliverableReviewIn(BaseModel):
+    action: Literal["approve", "reject"]
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ManagedCommentIn(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+    visibility: Literal["client", "internal"] = "client"
+
+
+class ManagedRevisionIn(BaseModel):
+    note: str = Field(min_length=3, max_length=2000)
+
+
+class ManagedRateIn(BaseModel):
+    score: int = Field(ge=1, le=5)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+# --- Helpers
+async def _get_managed_client_for(user: User) -> Optional[dict]:
+    return await db.managed_clients.find_one(
+        {"owner_user_id": user.user_id, "status": {"$in": ["active", "paused"]}}, {"_id": 0}
+    )
+
+
+async def _get_pool_membership(user: User) -> Optional[dict]:
+    return await db.pool_members.find_one(
+        {"user_id": user.user_id, "status": "active"}, {"_id": 0}
+    )
+
+
+async def _managed_task_or_404(task_id: str) -> dict:
+    t = await db.managed_tasks.find_one({"id": task_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return t
+
+
+async def _file_summaries(file_ids: List[str]) -> List[dict]:
+    out = []
+    for fid in file_ids:
+        f = await db.files.find_one(
+            {"id": fid}, {"_id": 0, "id": 1, "filename": 1, "size": 1, "content_type": 1}
+        )
+        if f:
+            out.append(f)
+    return out
+
+
+async def _managed_event(
+    task_id: str,
+    author: User,
+    kind: str,
+    visibility: str,
+    body: Optional[str] = None,
+    meta: Optional[dict] = None,
+) -> dict:
+    doc = {
+        "id": f"mte_{uuid.uuid4().hex[:10]}",
+        "task_id": task_id,
+        "author_id": author.user_id,
+        "author_name": author.name,
+        "kind": kind,  # comment | status_change | assignment | deliverable
+        "visibility": visibility,  # client (all parties) | internal (admin + freelancer)
+        "body": body,
+        "meta": meta,
+        "created_at": _now(),
+    }
+    await db.managed_task_events.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+async def _managed_set_status(
+    task: dict,
+    to_status: str,
+    actor: User,
+    *,
+    event_visibility: str = "client",
+    event_body: Optional[str] = None,
+    extra_set: Optional[dict] = None,
+    force: bool = False,
+) -> dict:
+    frm = task["status"]
+    if not force and to_status not in _MANAGED_TRANSITIONS.get(frm, set()):
+        raise HTTPException(status_code=400, detail=f"Cannot move task from '{frm}' to '{to_status}'")
+    update: dict = {"status": to_status, "updated_at": _now()}
+    ts_field = _MANAGED_STATUS_TIMESTAMPS.get(to_status)
+    if ts_field:
+        update[ts_field] = _now()
+    if extra_set:
+        update.update(extra_set)
+    await db.managed_tasks.update_one(
+        {"id": task["id"]},
+        {
+            "$set": update,
+            "$push": {"history": {"from": frm, "to": to_status, "at": _now().isoformat(), "by": actor.user_id}},
+        },
+    )
+    await _managed_event(
+        task["id"], actor, "status_change", event_visibility,
+        body=event_body, meta={"from_status": frm, "to_status": to_status},
+    )
+    return await db.managed_tasks.find_one({"id": task["id"]}, {"_id": 0})
+
+
+async def _recalc_pool_performance(pool_member_id: str) -> None:
+    pipeline = [
+        {"$match": {"pool_member_id": pool_member_id}},
+        {"$group": {"_id": None, "avg": {"$avg": "$score"}, "count": {"$sum": 1}}},
+    ]
+    res = await db.pool_ratings.aggregate(pipeline).to_list(length=1)
+    if not res:
+        return
+    await db.pool_members.update_one(
+        {"id": pool_member_id},
+        {"$set": {"performance_score": round(float(res[0]["avg"]), 2), "performance_count": int(res[0]["count"])}},
+    )
+
+
+async def _managed_request_attachments(task: dict) -> List[dict]:
+    """Brief files the client attached to the request (deliverable files are
+    stamped with managed_deliverable_id at submit time and excluded here)."""
+    docs = await db.files.find(
+        {
+            "managed_task_id": task["id"],
+            "managed_deliverable_id": None,
+            "owner_user_id": task["client_user_id"],
+        },
+        {"_id": 0, "id": 1, "filename": 1, "size": 1, "content_type": 1},
+    ).sort("created_at", 1).to_list(length=100)
+    return docs
+
+
+def _client_event_shape(e: dict) -> dict:
+    meta = e.get("meta") or None
+    if meta and e.get("kind") == "status_change":
+        meta = {
+            "from_status": _managed_client_status(meta.get("from_status", "")),
+            "to_status": _managed_client_status(meta.get("to_status", "")),
+        }
+    return {
+        "id": e["id"],
+        "author_name": e["author_name"],
+        "kind": e["kind"],
+        "body": e.get("body"),
+        "meta": meta,
+        "created_at": e["created_at"],
+    }
+
+
+async def _client_task_shape(task: dict, *, detail: bool = False) -> dict:
+    assignee_name = None
+    if task.get("assignee_user_id"):
+        u = await db.users.find_one({"user_id": task["assignee_user_id"]}, {"_id": 0, "name": 1})
+        assignee_name = u["name"] if u else None
+    out = {
+        "id": task["id"],
+        "title": task["title"],
+        "description": task["description"],
+        "priority": task.get("priority", "normal"),
+        "due_date": task.get("due_date"),
+        "status": _managed_client_status(task["status"]),
+        "assignee_name": assignee_name,
+        "created_at": task["created_at"],
+        "delivered_at": task.get("delivered_at"),
+        "completed_at": task.get("completed_at"),
+    }
+    if detail:
+        out["attachments"] = await _managed_request_attachments(task)
+        delivs = await db.managed_deliverables.find(
+            {"task_id": task["id"], "status": "approved"}, {"_id": 0}
+        ).sort("version", 1).to_list(length=50)
+        out["deliverables"] = [
+            {
+                "id": d["id"],
+                "note": d.get("note"),
+                "version": d["version"],
+                "files": await _file_summaries(d.get("file_ids", [])),
+                "created_at": d["created_at"],
+            }
+            for d in delivs
+        ]
+        events = await db.managed_task_events.find(
+            {"task_id": task["id"], "visibility": "client"}, {"_id": 0}
+        ).sort("created_at", 1).to_list(length=500)
+        out["events"] = [_client_event_shape(e) for e in events]
+    return out
+
+
+# --- Admin: freelancer pool
+@app.get("/api/admin/managed/pool")
+async def admin_list_pool(status: Optional[str] = None, _: User = Depends(require_admin)):
+    q: dict = {"status": status} if status else {"status": {"$ne": "removed"}}
+    docs = await db.pool_members.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    out = []
+    for d in docs:
+        u = await db.users.find_one({"user_id": d["user_id"]}, {"_id": 0, "name": 1, "email": 1, "picture": 1})
+        exp = None
+        if d.get("expert_id"):
+            exp = await db.experts.find_one(
+                {"id": d["expert_id"]},
+                {"_id": 0, "id": 1, "headline": 1, "category": 1, "image": 1, "rating": 1, "reviewCount": 1},
+            )
+        open_tasks = await db.managed_tasks.count_documents(
+            {"assignee_pool_member_id": d["id"], "status": {"$nin": ["completed", "cancelled"]}}
+        )
+        out.append({"member": d, "user": u, "expert": exp, "open_tasks": open_tasks})
+    return out
+
+
+@app.get("/api/admin/managed/pool/eligible")
+async def admin_list_pool_eligible(_: User = Depends(require_admin)):
+    existing = await db.pool_members.find(
+        {"status": {"$in": ["active", "suspended"]}}, {"_id": 0, "user_id": 1}
+    ).to_list(length=1000)
+    exclude = [m["user_id"] for m in existing]
+    docs = await db.experts.find(
+        {"verified": True, "user_id": {"$exists": True, "$nin": exclude + [None]}},
+        {"_id": 0, "id": 1, "user_id": 1, "name": 1, "headline": 1, "category": 1,
+         "hourlyRate": 1, "image": 1, "rating": 1, "reviewCount": 1},
+    ).sort("rating", -1).to_list(length=500)
+    return docs
+
+
+@app.post("/api/admin/managed/pool")
+async def admin_add_pool_member(payload: ManagedPoolAddIn, admin: User = Depends(require_admin)):
+    exp = await db.experts.find_one({"id": payload.expert_id}, {"_id": 0})
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expert not found")
+    if not exp.get("user_id"):
+        raise HTTPException(status_code=400, detail="Expert has no login account and cannot work managed tasks")
+    if not exp.get("verified"):
+        raise HTTPException(status_code=400, detail="Only vetted (verified) experts can join the managed pool")
+    dup = await db.pool_members.find_one(
+        {"user_id": exp["user_id"], "status": {"$in": ["active", "suspended"]}}, {"_id": 0, "id": 1}
+    )
+    if dup:
+        raise HTTPException(status_code=400, detail="This expert is already in the pool")
+    doc = {
+        "id": f"pm_{uuid.uuid4().hex[:10]}",
+        "user_id": exp["user_id"],
+        "expert_id": exp["id"],
+        "status": "active",
+        "cost_rate": payload.cost_rate,
+        "cost_rate_type": payload.cost_rate_type,
+        "currency": payload.currency,
+        "internal_notes": payload.internal_notes,
+        "added_by": admin.user_id,
+        "performance_score": 0.0,
+        "performance_count": 0,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    await db.pool_members.insert_one(doc)
+    doc.pop("_id", None)
+    await _notify(
+        exp["user_id"],
+        type="managed.pool_added",
+        title="You joined the WorkSoy managed pool",
+        body="An account manager can now assign you managed client tasks.",
+        href="/pool/tasks",
+        entity_id=doc["id"],
+    )
+    return doc
+
+
+@app.patch("/api/admin/managed/pool/{member_id}")
+async def admin_update_pool_member(member_id: str, payload: ManagedPoolUpdateIn, _: User = Depends(require_admin)):
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    update["updated_at"] = _now()
+    r = await db.pool_members.update_one({"id": member_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Pool member not found")
+    return await db.pool_members.find_one({"id": member_id}, {"_id": 0})
+
+
+@app.post("/api/admin/managed/pool/{member_id}/status")
+async def admin_set_pool_member_status(member_id: str, payload: ManagedPoolStatusIn, _: User = Depends(require_admin)):
+    m = await db.pool_members.find_one({"id": member_id}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Pool member not found")
+    await db.pool_members.update_one(
+        {"id": member_id}, {"$set": {"status": payload.status, "updated_at": _now()}}
+    )
+    # In-flight tasks stay assigned on suspend/remove so delivery isn't dropped
+    # silently; surface the count so the admin can reassign deliberately.
+    in_flight = await db.managed_tasks.count_documents(
+        {"assignee_pool_member_id": member_id, "status": {"$nin": ["completed", "cancelled"]}}
+    )
+    return {"ok": True, "in_flight_tasks": in_flight}
+
+
+@app.get("/api/admin/managed/pool/{member_id}")
+async def admin_get_pool_member(member_id: str, _: User = Depends(require_admin)):
+    m = await db.pool_members.find_one({"id": member_id}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Pool member not found")
+    u = await db.users.find_one({"user_id": m["user_id"]}, {"_id": 0, "name": 1, "email": 1, "picture": 1})
+    exp = None
+    if m.get("expert_id"):
+        exp = await db.experts.find_one(
+            {"id": m["expert_id"]},
+            {"_id": 0, "id": 1, "headline": 1, "category": 1, "image": 1, "rating": 1, "reviewCount": 1},
+        )
+    ratings = await db.pool_ratings.find(
+        {"pool_member_id": member_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=200)
+    for r in ratings:
+        t = await db.managed_tasks.find_one({"id": r["task_id"]}, {"_id": 0, "title": 1})
+        r["task_title"] = t["title"] if t else None
+    tasks = await db.managed_tasks.find(
+        {"assignee_pool_member_id": member_id},
+        {"_id": 0, "id": 1, "title": 1, "status": 1, "client_id": 1, "created_at": 1, "completed_at": 1},
+    ).sort("created_at", -1).to_list(length=200)
+    return {"member": m, "user": u, "expert": exp, "ratings": ratings, "tasks": tasks}
+
+
+# --- Admin: managed clients & billing
+@app.get("/api/admin/managed/clients")
+async def admin_list_managed_clients(_: User = Depends(require_admin)):
+    docs = await db.managed_clients.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    charge_agg = await db.managed_charges.aggregate([
+        {"$group": {
+            "_id": {"client_id": "$client_id", "status": "$status"},
+            "total": {"$sum": "$amount"},
+        }},
+    ]).to_list(length=2000)
+    billing: dict[str, dict] = {}
+    for row in charge_agg:
+        cid = row["_id"]["client_id"]
+        b = billing.setdefault(cid, {"billed": 0.0, "paid": 0.0, "unpaid": 0.0})
+        b["billed"] += row["total"]
+        b[row["_id"]["status"]] = b.get(row["_id"]["status"], 0.0) + row["total"]
+    task_agg = await db.managed_tasks.aggregate([
+        {"$match": {"status": {"$nin": ["completed", "cancelled"]}}},
+        {"$group": {"_id": "$client_id", "count": {"$sum": 1}}},
+    ]).to_list(length=2000)
+    open_tasks = {row["_id"]: row["count"] for row in task_agg}
+    out = []
+    for d in docs:
+        u = await db.users.find_one({"user_id": d["owner_user_id"]}, {"_id": 0, "name": 1, "email": 1})
+        out.append({
+            "client": d,
+            "owner": u,
+            "billing": billing.get(d["id"], {"billed": 0.0, "paid": 0.0, "unpaid": 0.0}),
+            "open_tasks": open_tasks.get(d["id"], 0),
+        })
+    return out
+
+
+@app.post("/api/admin/managed/clients")
+async def admin_create_managed_client(payload: ManagedClientCreateIn, admin: User = Depends(require_admin)):
+    owner = await db.users.find_one({"email": payload.owner_email.lower()}, {"_id": 0, "user_id": 1, "name": 1})
+    if not owner:
+        raise HTTPException(
+            status_code=404,
+            detail="No WorkSoy account with that email. Ask the client to sign up first.",
+        )
+    dup = await db.managed_clients.find_one(
+        {"owner_user_id": owner["user_id"], "status": {"$in": ["active", "paused"]}}, {"_id": 0, "id": 1}
+    )
+    if dup:
+        raise HTTPException(status_code=400, detail="This user already owns a managed client account")
+    doc = {
+        "id": f"mc_{uuid.uuid4().hex[:10]}",
+        "owner_user_id": owner["user_id"],
+        "company_name": payload.company_name,
+        "contact_name": payload.contact_name,
+        "contact_email": payload.contact_email,
+        "plan_type": payload.plan_type,
+        "plan_rate": payload.plan_rate,
+        "currency": payload.currency,
+        "plan_notes": payload.plan_notes,
+        "status": "active",
+        "internal_notes": payload.internal_notes,
+        "created_by": admin.user_id,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    await db.managed_clients.insert_one(doc)
+    doc.pop("_id", None)
+    await _notify(
+        owner["user_id"],
+        type="managed.client_created",
+        title="Your managed service is live",
+        body=f"{payload.company_name} is set up on the WorkSoy managed plan. Submit your first task.",
+        href="/portal",
+        entity_id=doc["id"],
+    )
+    return doc
+
+
+@app.patch("/api/admin/managed/clients/{client_id}")
+async def admin_update_managed_client(client_id: str, payload: ManagedClientUpdateIn, _: User = Depends(require_admin)):
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    update["updated_at"] = _now()
+    r = await db.managed_clients.update_one({"id": client_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Managed client not found")
+    return await db.managed_clients.find_one({"id": client_id}, {"_id": 0})
+
+
+@app.get("/api/admin/managed/clients/{client_id}/charges")
+async def admin_list_charges(client_id: str, _: User = Depends(require_admin)):
+    docs = await db.managed_charges.find(
+        {"client_id": client_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=500)
+    return docs
+
+
+@app.post("/api/admin/managed/clients/{client_id}/charges")
+async def admin_add_charge(client_id: str, payload: ManagedChargeIn, admin: User = Depends(require_admin)):
+    c = await db.managed_clients.find_one({"id": client_id}, {"_id": 0, "id": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Managed client not found")
+    doc = {
+        "id": f"mch_{uuid.uuid4().hex[:10]}",
+        "client_id": client_id,
+        "description": payload.description,
+        "amount": payload.amount,
+        "currency": payload.currency,
+        "due_date": payload.due_date,
+        "status": "unpaid",
+        "paid_at": None,
+        "task_id": payload.task_id,
+        "created_by": admin.user_id,
+        "created_at": _now(),
+    }
+    await db.managed_charges.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@app.patch("/api/admin/managed/charges/{charge_id}")
+async def admin_update_charge_status(charge_id: str, payload: ManagedChargeStatusIn, _: User = Depends(require_admin)):
+    update = {"status": payload.status, "paid_at": _now() if payload.status == "paid" else None}
+    r = await db.managed_charges.update_one({"id": charge_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Charge not found")
+    return await db.managed_charges.find_one({"id": charge_id}, {"_id": 0})
+
+
+@app.delete("/api/admin/managed/charges/{charge_id}")
+async def admin_delete_charge(charge_id: str, _: User = Depends(require_admin)):
+    r = await db.managed_charges.delete_one({"id": charge_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Charge not found")
+    return {"ok": True}
+
+
+# --- Admin: task board & delivery flow
+@app.get("/api/admin/managed/tasks")
+async def admin_list_managed_tasks(
+    status: Optional[str] = None,
+    client_id: Optional[str] = None,
+    assignee: Optional[str] = None,
+    _: User = Depends(require_admin),
+):
+    q: dict = {}
+    if status:
+        q["status"] = status
+    if client_id:
+        q["client_id"] = client_id
+    if assignee:
+        q["assignee_pool_member_id"] = assignee
+    docs = await db.managed_tasks.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    client_ids = {d["client_id"] for d in docs}
+    clients = {
+        c["id"]: c
+        async for c in db.managed_clients.find(
+            {"id": {"$in": list(client_ids)}}, {"_id": 0, "id": 1, "company_name": 1}
+        )
+    }
+    assignee_ids = {d["assignee_user_id"] for d in docs if d.get("assignee_user_id")}
+    users = {
+        u["user_id"]: u
+        async for u in db.users.find(
+            {"user_id": {"$in": list(assignee_ids)}}, {"_id": 0, "user_id": 1, "name": 1}
+        )
+    }
+    out = []
+    for d in docs:
+        d.pop("history", None)
+        client = clients.get(d["client_id"])
+        assignee_user = users.get(d.get("assignee_user_id") or "")
+        out.append({
+            "task": d,
+            "company_name": client["company_name"] if client else None,
+            "assignee_name": assignee_user["name"] if assignee_user else None,
+        })
+    return out
+
+
+async def _admin_task_detail(task: dict) -> dict:
+    client = await db.managed_clients.find_one({"id": task["client_id"]}, {"_id": 0})
+    assignee = None
+    if task.get("assignee_pool_member_id"):
+        m = await db.pool_members.find_one({"id": task["assignee_pool_member_id"]}, {"_id": 0})
+        if m:
+            u = await db.users.find_one({"user_id": m["user_id"]}, {"_id": 0, "name": 1, "email": 1, "picture": 1})
+            assignee = {"member": m, "user": u}
+    delivs = await db.managed_deliverables.find(
+        {"task_id": task["id"]}, {"_id": 0}
+    ).sort("version", 1).to_list(length=50)
+    for d in delivs:
+        d["files"] = await _file_summaries(d.get("file_ids", []))
+    events = await db.managed_task_events.find(
+        {"task_id": task["id"]}, {"_id": 0}
+    ).sort("created_at", 1).to_list(length=500)
+    rating = await db.pool_ratings.find_one({"task_id": task["id"]}, {"_id": 0})
+    return {
+        "task": task,
+        "client": client,
+        "assignee": assignee,
+        "attachments": await _managed_request_attachments(task),
+        "deliverables": delivs,
+        "events": events,
+        "rating": rating,
+    }
+
+
+@app.get("/api/admin/managed/tasks/{task_id}")
+async def admin_get_managed_task(task_id: str, _: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    return await _admin_task_detail(task)
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/accept")
+async def admin_accept_task(task_id: str, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    updated = await _managed_set_status(task, "accepted", admin, event_body="Task accepted into the delivery queue.")
+    await _notify(
+        task["client_user_id"],
+        type="managed.task_accepted",
+        title="Task accepted",
+        body=f"“{task['title']}” was accepted and queued for delivery.",
+        href=f"/portal/tasks/{task_id}",
+        entity_id=task_id,
+    )
+    return updated
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/assign")
+async def admin_assign_task(task_id: str, payload: ManagedAssignIn, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    member = await db.pool_members.find_one({"id": payload.pool_member_id}, {"_id": 0})
+    if not member or member["status"] != "active":
+        raise HTTPException(status_code=400, detail="Pool member not found or not active")
+    u = await db.users.find_one({"user_id": member["user_id"]}, {"_id": 0, "name": 1})
+    updated = await _managed_set_status(
+        task, "assigned", admin,
+        extra_set={"assignee_pool_member_id": member["id"], "assignee_user_id": member["user_id"]},
+    )
+    await _managed_event(
+        task_id, admin, "assignment", "client",
+        body=f"{u['name'] if u else 'A specialist'} was assigned to this task.",
+    )
+    await _notify(
+        member["user_id"],
+        type="managed.task_assigned",
+        title="New managed task assigned",
+        body=f"You were assigned “{task['title']}”.",
+        href=f"/pool/tasks/{task_id}",
+        entity_id=task_id,
+    )
+    return updated
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/unassign")
+async def admin_unassign_task(task_id: str, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    if task["status"] != "assigned":
+        raise HTTPException(status_code=400, detail="Only tasks awaiting a start can be unassigned")
+    prev_assignee = task.get("assignee_user_id")
+    updated = await _managed_set_status(
+        task, "accepted", admin,
+        event_visibility="internal",
+        extra_set={"assignee_pool_member_id": None, "assignee_user_id": None},
+    )
+    if prev_assignee:
+        await _notify(
+            prev_assignee,
+            type="managed.task_unassigned",
+            title="Task unassigned",
+            body=f"You were unassigned from “{task['title']}”.",
+            href="/pool/tasks",
+            entity_id=task_id,
+        )
+    return updated
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/hold")
+async def admin_hold_task(task_id: str, payload: ManagedHoldIn, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    return await _managed_set_status(
+        task, "on_hold", admin,
+        event_body=payload.note or "Task placed on hold.",
+        extra_set={"hold_resume_status": task["status"]},
+    )
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/resume")
+async def admin_resume_task(task_id: str, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    if task["status"] != "on_hold":
+        raise HTTPException(status_code=400, detail="Task is not on hold")
+    target = task.get("hold_resume_status") or "accepted"
+    return await _managed_set_status(
+        task, target, admin,
+        event_body="Task resumed.",
+        extra_set={"hold_resume_status": None},
+        force=True,
+    )
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/cancel")
+async def admin_cancel_task(task_id: str, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    updated = await _managed_set_status(task, "cancelled", admin, event_body="Task cancelled.")
+    await _notify(
+        task["client_user_id"],
+        type="managed.task_cancelled",
+        title="Task cancelled",
+        body=f"“{task['title']}” was cancelled. Your account manager will follow up.",
+        href=f"/portal/tasks/{task_id}",
+        entity_id=task_id,
+    )
+    if task.get("assignee_user_id"):
+        await _notify(
+            task["assignee_user_id"],
+            type="managed.task_cancelled",
+            title="Task cancelled",
+            body=f"“{task['title']}” was cancelled.",
+            href="/pool/tasks",
+            entity_id=task_id,
+        )
+    return updated
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/complete")
+async def admin_complete_task(task_id: str, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    updated = await _managed_set_status(task, "completed", admin, event_body="Task completed.")
+    if task.get("assignee_user_id"):
+        await _notify(
+            task["assignee_user_id"],
+            type="managed.task_completed",
+            title="Task completed",
+            body=f"“{task['title']}” was marked completed. Nice work.",
+            href=f"/pool/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    return updated
+
+
+@app.post("/api/admin/managed/deliverables/{deliverable_id}/review")
+async def admin_review_deliverable(deliverable_id: str, payload: ManagedDeliverableReviewIn, admin: User = Depends(require_admin)):
+    d = await db.managed_deliverables.find_one({"id": deliverable_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Deliverable not found")
+    if d["status"] != "pending_review":
+        raise HTTPException(status_code=400, detail="Deliverable already reviewed")
+    task = await _managed_task_or_404(d["task_id"])
+    if task["status"] != "submitted":
+        raise HTTPException(status_code=400, detail="Task is not awaiting review")
+    if payload.action == "reject" and not (payload.note or "").strip():
+        raise HTTPException(status_code=400, detail="A note is required when requesting changes")
+    new_status = "approved" if payload.action == "approve" else "rejected"
+    await db.managed_deliverables.update_one(
+        {"id": deliverable_id},
+        {"$set": {
+            "status": new_status,
+            "reviewed_by": admin.user_id,
+            "reviewed_at": _now(),
+            "review_note": payload.note,
+        }},
+    )
+    if payload.action == "approve":
+        await _managed_event(
+            task["id"], admin, "deliverable", "client",
+            body=payload.note or "A deliverable is ready for you.",
+            meta={"deliverable_id": deliverable_id},
+        )
+        await _managed_set_status(task, "delivered", admin, event_visibility="internal")
+        await _notify(
+            task["client_user_id"],
+            type="managed.deliverable_ready",
+            title="Deliverable ready",
+            body=f"A deliverable for “{task['title']}” is ready to review.",
+            href=f"/portal/tasks/{task['id']}",
+            entity_id=task["id"],
+        )
+        if task.get("assignee_user_id"):
+            await _notify(
+                task["assignee_user_id"],
+                type="managed.deliverable_approved",
+                title="Deliverable approved",
+                body=f"Your deliverable on “{task['title']}” was approved and released to the client.",
+                href=f"/pool/tasks/{task['id']}",
+                entity_id=task["id"],
+            )
+    else:
+        await _managed_set_status(
+            task, "revision_requested", admin,
+            event_visibility="internal", event_body=payload.note,
+        )
+        if task.get("assignee_user_id"):
+            await _notify(
+                task["assignee_user_id"],
+                type="managed.revision_requested",
+                title="Changes requested",
+                body=f"Please revise your deliverable on “{task['title']}”.",
+                href=f"/pool/tasks/{task['id']}",
+                entity_id=task["id"],
+            )
+    return await db.managed_deliverables.find_one({"id": deliverable_id}, {"_id": 0})
+
+
+@app.post("/api/admin/managed/tasks/{task_id}/rate")
+async def admin_rate_task(task_id: str, payload: ManagedRateIn, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    if task["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Only completed tasks can be rated")
+    if not task.get("assignee_pool_member_id"):
+        raise HTTPException(status_code=400, detail="Task has no assigned pool member")
+    dup = await db.pool_ratings.find_one({"task_id": task_id}, {"_id": 0, "id": 1})
+    if dup:
+        raise HTTPException(status_code=400, detail="This task was already rated")
+    doc = {
+        "id": f"prt_{uuid.uuid4().hex[:10]}",
+        "pool_member_id": task["assignee_pool_member_id"],
+        "task_id": task_id,
+        "rated_by": admin.user_id,
+        "score": payload.score,
+        "notes": payload.notes,
+        "created_at": _now(),
+    }
+    await db.pool_ratings.insert_one(doc)
+    doc.pop("_id", None)
+    await _recalc_pool_performance(task["assignee_pool_member_id"])
+    return doc
+
+
+@app.get("/api/admin/managed/stats")
+async def admin_managed_stats(_: User = Depends(require_admin)):
+    unpaid_agg = await db.managed_charges.aggregate([
+        {"$match": {"status": "unpaid"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(length=1)
+    paid_agg = await db.managed_charges.aggregate([
+        {"$match": {"status": "paid"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(length=1)
+    return {
+        "pool_active": await db.pool_members.count_documents({"status": "active"}),
+        "clients_active": await db.managed_clients.count_documents({"status": "active"}),
+        "tasks_requested": await db.managed_tasks.count_documents({"status": "requested"}),
+        "tasks_submitted": await db.managed_tasks.count_documents({"status": "submitted"}),
+        "tasks_in_flight": await db.managed_tasks.count_documents(
+            {"status": {"$nin": ["completed", "cancelled", "requested"]}}
+        ),
+        "revenue_unpaid": unpaid_agg[0]["total"] if unpaid_agg else 0.0,
+        "revenue_paid": paid_agg[0]["total"] if paid_agg else 0.0,
+    }
+
+
+# --- Client portal
+@app.get("/api/managed/me")
+async def managed_me(request: Request):
+    """Returns the caller's managed-client account, or null when they are not
+    a managed client (200 + null keeps public nav checks quiet, like /auth/me)."""
+    user = await _resolve_user_optional(request)
+    if not user:
+        return None
+    c = await _get_managed_client_for(user)
+    if not c:
+        return None
+    c.pop("internal_notes", None)
+    c.pop("created_by", None)
+    return c
+
+
+@app.post("/api/managed/tasks")
+async def create_managed_task(payload: ManagedTaskIn, user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    if client["status"] != "active":
+        raise HTTPException(status_code=400, detail="Your managed plan is paused. Contact your account manager.")
+    now = _now()
+    doc = {
+        "id": f"mt_{uuid.uuid4().hex[:10]}",
+        "client_id": client["id"],
+        "client_user_id": user.user_id,
+        "title": payload.title,
+        "description": payload.description,
+        "priority": payload.priority,
+        "due_date": payload.due_date,
+        "status": "requested",
+        "assignee_pool_member_id": None,
+        "assignee_user_id": None,
+        "hold_resume_status": None,
+        "admin_notes": None,
+        "history": [{"from": None, "to": "requested", "at": now.isoformat(), "by": user.user_id}],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.managed_tasks.insert_one(doc)
+    doc.pop("_id", None)
+    await _notify_admins(
+        "managed.task_requested",
+        "Managed task requested",
+        body=f"{client['company_name']} requested “{payload.title}”.",
+        href="/admin",
+        entity_id=doc["id"],
+    )
+    return await _client_task_shape(doc)
+
+
+@app.get("/api/managed/tasks")
+async def list_my_managed_tasks(user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    docs = await db.managed_tasks.find(
+        {"client_id": client["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=500)
+    return [await _client_task_shape(d) for d in docs]
+
+
+@app.get("/api/managed/tasks/{task_id}")
+async def get_my_managed_task(task_id: str, user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    task = await _managed_task_or_404(task_id)
+    if task["client_id"] != client["id"]:
+        raise HTTPException(status_code=403, detail="Not your task")
+    return await _client_task_shape(task, detail=True)
+
+
+@app.post("/api/managed/tasks/{task_id}/cancel")
+async def cancel_my_managed_task(task_id: str, user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    task = await _managed_task_or_404(task_id)
+    if task["client_id"] != client["id"]:
+        raise HTTPException(status_code=403, detail="Not your task")
+    if task["status"] != "requested":
+        raise HTTPException(status_code=400, detail="Only requests that haven't been accepted can be cancelled. Contact your account manager.")
+    updated = await _managed_set_status(task, "cancelled", user, event_body="Request withdrawn by client.")
+    return await _client_task_shape(updated)
+
+
+@app.post("/api/managed/tasks/{task_id}/request-revision")
+async def request_managed_revision(task_id: str, payload: ManagedRevisionIn, user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    task = await _managed_task_or_404(task_id)
+    if task["client_id"] != client["id"]:
+        raise HTTPException(status_code=403, detail="Not your task")
+    if task["status"] != "delivered":
+        raise HTTPException(status_code=400, detail="Revisions can only be requested on delivered work")
+    updated = await _managed_set_status(task, "revision_requested", user, event_body=payload.note)
+    await _notify_admins(
+        "managed.client_revision",
+        "Client requested changes",
+        body=f"{client['company_name']} requested changes on “{task['title']}”.",
+        href="/admin",
+        entity_id=task_id,
+    )
+    if task.get("assignee_user_id"):
+        await _notify(
+            task["assignee_user_id"],
+            type="managed.revision_requested",
+            title="Changes requested",
+            body=f"The client requested changes on “{task['title']}”.",
+            href=f"/pool/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    return await _client_task_shape(updated)
+
+
+@app.post("/api/managed/tasks/{task_id}/complete")
+async def confirm_managed_completion(task_id: str, user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    task = await _managed_task_or_404(task_id)
+    if task["client_id"] != client["id"]:
+        raise HTTPException(status_code=403, detail="Not your task")
+    if task["status"] != "delivered":
+        raise HTTPException(status_code=400, detail="Only delivered tasks can be confirmed complete")
+    updated = await _managed_set_status(task, "completed", user, event_body="Client confirmed completion.")
+    if task.get("assignee_user_id"):
+        await _notify(
+            task["assignee_user_id"],
+            type="managed.task_completed",
+            title="Task completed",
+            body=f"“{task['title']}” was confirmed complete by the client.",
+            href=f"/pool/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    return await _client_task_shape(updated)
+
+
+@app.post("/api/managed/tasks/{task_id}/comments")
+async def add_managed_task_comment_client(task_id: str, payload: ManagedCommentIn, user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    task = await _managed_task_or_404(task_id)
+    if task["client_id"] != client["id"]:
+        raise HTTPException(status_code=403, detail="Not your task")
+    # Clients always post client-visible comments regardless of payload.
+    event = await _managed_event(task_id, user, "comment", "client", body=payload.body)
+    await _notify_admins(
+        "managed.client_comment",
+        "Client commented on a task",
+        body=f"{client['company_name']} commented on “{task['title']}”.",
+        href="/admin",
+        entity_id=task_id,
+    )
+    if task.get("assignee_user_id"):
+        await _notify(
+            task["assignee_user_id"],
+            type="managed.task_comment",
+            title="New comment",
+            body=f"New client comment on “{task['title']}”.",
+            href=f"/pool/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    return _client_event_shape(event)
+
+
+@app.get("/api/managed/billing")
+async def my_managed_billing(user: User = Depends(get_current_user)):
+    client = await _get_managed_client_for(user)
+    if not client:
+        raise HTTPException(status_code=403, detail="Not a managed client")
+    docs = await db.managed_charges.find(
+        {"client_id": client["id"]},
+        {"_id": 0, "created_by": 1, "id": 1, "description": 1, "amount": 1,
+         "currency": 1, "due_date": 1, "status": 1, "paid_at": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(length=500)
+    for d in docs:
+        d.pop("created_by", None)
+    return docs
+
+
+# --- Freelancer (pool) task workspace
+@app.get("/api/pool/me")
+async def pool_me(request: Request):
+    """Returns the caller's active pool membership, or null (200) when they are
+    not in the managed pool — same quiet-check contract as /api/managed/me."""
+    user = await _resolve_user_optional(request)
+    if not user:
+        return None
+    m = await _get_pool_membership(user)
+    if not m:
+        return None
+    m.pop("internal_notes", None)
+    m.pop("added_by", None)
+    m.pop("performance_score", None)
+    m.pop("performance_count", None)
+    return m
+
+
+def _pool_task_shape(task: dict, company_name: Optional[str]) -> dict:
+    out = dict(task)
+    out.pop("admin_notes", None)
+    out.pop("history", None)
+    out["company_name"] = company_name
+    return out
+
+
+@app.get("/api/pool/tasks")
+async def list_pool_tasks(user: User = Depends(get_current_user)):
+    m = await _get_pool_membership(user)
+    if not m:
+        raise HTTPException(status_code=403, detail="Not an active pool member")
+    docs = await db.managed_tasks.find(
+        {"assignee_user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=500)
+    client_ids = {d["client_id"] for d in docs}
+    clients = {
+        c["id"]: c
+        async for c in db.managed_clients.find(
+            {"id": {"$in": list(client_ids)}}, {"_id": 0, "id": 1, "company_name": 1}
+        )
+    }
+    return [
+        _pool_task_shape(d, clients.get(d["client_id"], {}).get("company_name"))
+        for d in docs
+    ]
+
+
+@app.get("/api/pool/tasks/{task_id}")
+async def get_pool_task(task_id: str, user: User = Depends(get_current_user)):
+    m = await _get_pool_membership(user)
+    if not m:
+        raise HTTPException(status_code=403, detail="Not an active pool member")
+    task = await _managed_task_or_404(task_id)
+    if task.get("assignee_user_id") != user.user_id:
+        raise HTTPException(status_code=403, detail="Not your assignment")
+    client = await db.managed_clients.find_one(
+        {"id": task["client_id"]}, {"_id": 0, "company_name": 1}
+    )
+    delivs = await db.managed_deliverables.find(
+        {"task_id": task_id}, {"_id": 0}
+    ).sort("version", 1).to_list(length=50)
+    for d in delivs:
+        d["files"] = await _file_summaries(d.get("file_ids", []))
+    events = await db.managed_task_events.find(
+        {"task_id": task_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(length=500)
+    return {
+        "task": _pool_task_shape(task, client["company_name"] if client else None),
+        "attachments": await _managed_request_attachments(task),
+        "deliverables": delivs,
+        "events": events,
+    }
+
+
+@app.post("/api/pool/tasks/{task_id}/start")
+async def start_pool_task(task_id: str, user: User = Depends(get_current_user)):
+    m = await _get_pool_membership(user)
+    if not m:
+        raise HTTPException(status_code=403, detail="Not an active pool member")
+    task = await _managed_task_or_404(task_id)
+    if task.get("assignee_user_id") != user.user_id:
+        raise HTTPException(status_code=403, detail="Not your assignment")
+    updated = await _managed_set_status(task, "in_progress", user, event_visibility="internal", event_body="Work started.")
+    client = await db.managed_clients.find_one({"id": task["client_id"]}, {"_id": 0, "company_name": 1})
+    return _pool_task_shape(updated, client["company_name"] if client else None)
+
+
+@app.post("/api/pool/tasks/{task_id}/deliverables")
+async def submit_pool_deliverable(task_id: str, payload: ManagedDeliverableIn, user: User = Depends(get_current_user)):
+    m = await _get_pool_membership(user)
+    if not m:
+        raise HTTPException(status_code=403, detail="Not an active pool member")
+    task = await _managed_task_or_404(task_id)
+    if task.get("assignee_user_id") != user.user_id:
+        raise HTTPException(status_code=403, detail="Not your assignment")
+    if task["status"] not in ("in_progress", "revision_requested"):
+        raise HTTPException(status_code=400, detail=f"Cannot submit a deliverable from status '{task['status']}'")
+    for fid in payload.file_ids:
+        f = await db.files.find_one({"id": fid}, {"_id": 0, "managed_task_id": 1, "owner_user_id": 1})
+        if not f or f.get("managed_task_id") != task_id or f.get("owner_user_id") != user.user_id:
+            raise HTTPException(status_code=400, detail="Each file must be uploaded by you against this task")
+    version = await db.managed_deliverables.count_documents({"task_id": task_id}) + 1
+    doc = {
+        "id": f"md_{uuid.uuid4().hex[:10]}",
+        "task_id": task_id,
+        "uploaded_by": user.user_id,
+        "note": payload.note,
+        "file_ids": payload.file_ids,
+        "status": "pending_review",
+        "version": version,
+        "reviewed_by": None,
+        "reviewed_at": None,
+        "review_note": None,
+        "created_at": _now(),
+    }
+    await db.managed_deliverables.insert_one(doc)
+    doc.pop("_id", None)
+    # Stamp the files so they stop counting as request attachments and so the
+    # download gate can require deliverable approval for client access.
+    await db.files.update_many(
+        {"id": {"$in": payload.file_ids}}, {"$set": {"managed_deliverable_id": doc["id"]}}
+    )
+    await _managed_set_status(task, "submitted", user, event_visibility="internal", event_body="Deliverable submitted for review.")
+    await _notify_admins(
+        "managed.deliverable_submitted",
+        "Deliverable awaiting review",
+        body=f"A deliverable (v{version}) on “{task['title']}” needs review.",
+        href="/admin",
+        entity_id=task_id,
+    )
+    doc["files"] = await _file_summaries(payload.file_ids)
+    return doc
+
+
+@app.post("/api/pool/tasks/{task_id}/comments")
+async def add_managed_task_comment_pool(task_id: str, payload: ManagedCommentIn, user: User = Depends(get_current_user)):
+    m = await _get_pool_membership(user)
+    if not m:
+        raise HTTPException(status_code=403, detail="Not an active pool member")
+    task = await _managed_task_or_404(task_id)
+    if task.get("assignee_user_id") != user.user_id:
+        raise HTTPException(status_code=403, detail="Not your assignment")
+    event = await _managed_event(task_id, user, "comment", payload.visibility, body=payload.body)
+    await _notify_admins(
+        "managed.pool_comment",
+        "Freelancer commented on a task",
+        body=f"New comment on “{task['title']}”.",
+        href="/admin",
+        entity_id=task_id,
+    )
+    if payload.visibility == "client":
+        await _notify(
+            task["client_user_id"],
+            type="managed.task_comment",
+            title="New comment",
+            body=f"New comment on “{task['title']}”.",
+            href=f"/portal/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    return event
+
+
+# Admin comments go through one endpoint with full visibility control.
+@app.post("/api/admin/managed/tasks/{task_id}/comments")
+async def add_managed_task_comment_admin(task_id: str, payload: ManagedCommentIn, admin: User = Depends(require_admin)):
+    task = await _managed_task_or_404(task_id)
+    event = await _managed_event(task_id, admin, "comment", payload.visibility, body=payload.body)
+    if payload.visibility == "client":
+        await _notify(
+            task["client_user_id"],
+            type="managed.task_comment",
+            title="New comment",
+            body=f"New comment on “{task['title']}”.",
+            href=f"/portal/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    if task.get("assignee_user_id"):
+        await _notify(
+            task["assignee_user_id"],
+            type="managed.task_comment",
+            title="New comment",
+            body=f"New comment on “{task['title']}”.",
+            href=f"/pool/tasks/{task_id}",
+            entity_id=task_id,
+        )
+    return event
+
+
+@app.patch("/api/admin/managed/tasks/{task_id}/notes")
+async def admin_update_task_notes(task_id: str, payload: ManagedHoldIn, _: User = Depends(require_admin)):
+    await _managed_task_or_404(task_id)
+    await db.managed_tasks.update_one(
+        {"id": task_id}, {"$set": {"admin_notes": payload.note, "updated_at": _now()}}
+    )
+    return {"ok": True}
+
+
+# =========================================================================
 # Startup
 # =========================================================================
 @app.on_event("startup")
@@ -3025,6 +4329,29 @@ async def _startup():
     await db.shortlists.create_index("user_id")
     await db.saved_searches.create_index("id", unique=True)
     await db.saved_searches.create_index("user_id")
+
+    # Managed service (pool, clients, tasks, deliverables, events, ratings)
+    await db.pool_members.create_index("id", unique=True)
+    await db.pool_members.create_index("user_id")
+    await db.pool_members.create_index("status")
+    await db.managed_clients.create_index("id", unique=True)
+    await db.managed_clients.create_index("owner_user_id")
+    await db.managed_clients.create_index("status")
+    await db.managed_charges.create_index("id", unique=True)
+    await db.managed_charges.create_index("client_id")
+    await db.managed_charges.create_index("status")
+    await db.managed_tasks.create_index("id", unique=True)
+    await db.managed_tasks.create_index("client_id")
+    await db.managed_tasks.create_index("client_user_id")
+    await db.managed_tasks.create_index("assignee_user_id", sparse=True)
+    await db.managed_tasks.create_index("status")
+    await db.managed_deliverables.create_index("id", unique=True)
+    await db.managed_deliverables.create_index("task_id")
+    await db.managed_task_events.create_index("id", unique=True)
+    await db.managed_task_events.create_index("task_id")
+    await db.pool_ratings.create_index("id", unique=True)
+    await db.pool_ratings.create_index("pool_member_id")
+    await db.pool_ratings.create_index("task_id", unique=True)
 
     # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})

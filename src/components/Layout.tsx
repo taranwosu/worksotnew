@@ -10,10 +10,12 @@ import {
   Shield,
   Clock,
   Settings,
+  Briefcase,
+  ClipboardList,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
-import { getMyVetting } from "@/lib/api";
+import { getMyVetting, fetchMyManagedClient, fetchMyPoolMembership } from "@/lib/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { Toaster } from "@/components/ui/sonner";
@@ -33,6 +35,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const amIAdmin = session?.user?.role === "admin";
   const unreadCount = 0;
   const [vettingStage, setVettingStage] = useState<string | null>(null);
+  const [isManagedClient, setIsManagedClient] = useState(false);
+  const [isPoolMember, setIsPoolMember] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      setIsManagedClient(false);
+      setIsPoolMember(false);
+      return;
+    }
+    let cancelled = false;
+    fetchMyManagedClient().then((c) => { if (!cancelled) setIsManagedClient(!!c); });
+    fetchMyPoolMembership().then((m) => { if (!cancelled) setIsPoolMember(!!m); });
+    return () => { cancelled = true; };
+  }, [session?.user?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!hasExpertProfile) {
@@ -240,6 +256,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             Vetting status
                           </MenuItem>
                         )}
+                        {isManagedClient && (
+                          <MenuItem
+                            to="/portal"
+                            onClick={() => setProfileOpen(false)}
+                            icon={<Briefcase className="h-4 w-4" />}
+                          >
+                            Client portal
+                          </MenuItem>
+                        )}
+                        {isPoolMember && (
+                          <MenuItem
+                            to="/pool/tasks"
+                            onClick={() => setProfileOpen(false)}
+                            icon={<ClipboardList className="h-4 w-4" />}
+                          >
+                            My pool tasks
+                          </MenuItem>
+                        )}
                         <MenuItem
                           to="/settings"
                           onClick={() => setProfileOpen(false)}
@@ -346,6 +380,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <MobileLink to="/messages" onClose={() => setMobileOpen(false)}>
                     Messages{unreadCount > 0 ? ` · ${unreadCount}` : ""}
                   </MobileLink>
+                  {isManagedClient && (
+                    <MobileLink to="/portal" onClose={() => setMobileOpen(false)}>
+                      Client portal
+                    </MobileLink>
+                  )}
+                  {isPoolMember && (
+                    <MobileLink to="/pool/tasks" onClose={() => setMobileOpen(false)}>
+                      My pool tasks
+                    </MobileLink>
+                  )}
                   <MobileLink to="/settings" onClose={() => setMobileOpen(false)}>
                     Account settings
                   </MobileLink>

@@ -35,6 +35,10 @@ import { ProcessPage } from "./pages/ProcessPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { AccountSettingsPage } from "./pages/AccountSettingsPage";
 import { AcceptableUsePage } from "./pages/AcceptableUsePage";
+import { ClientPortalPage } from "./pages/ClientPortalPage";
+import { ClientTaskDetailPage } from "./pages/ClientTaskDetailPage";
+import { PoolTasksPage } from "./pages/PoolTasksPage";
+import { PoolTaskDetailPage } from "./pages/PoolTaskDetailPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -84,6 +88,10 @@ const routes = [
   make("/reset-password", ResetPasswordPage),
   make("/vetting", VettingPage),
   make("/process", ProcessPage),
+  make("/portal", ClientPortalPage),
+  createRoute({ getParentRoute: () => rootRoute, path: "/portal/tasks/$taskId", component: ClientTaskDetailPage }),
+  make("/pool/tasks", PoolTasksPage),
+  createRoute({ getParentRoute: () => rootRoute, path: "/pool/tasks/$taskId", component: PoolTaskDetailPage }),
 ] as const;
 
 const routeTree = rootRoute.addChildren(routes);
