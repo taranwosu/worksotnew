@@ -42,6 +42,8 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 EMERGENT_AUTH_URL = os.environ["EMERGENT_AUTH_URL"]
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
+# Overridable so CI/tests can point payout calls at a stub.
+STRIPE_API_BASE = os.environ.get("STRIPE_API_BASE", "https://api.stripe.com/v1").rstrip("/")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@worksoy.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 # Comma-separated list of origins permitted to call the API. Falls back to
