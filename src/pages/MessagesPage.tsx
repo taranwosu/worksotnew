@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { Loader2, Send, Paperclip, FileText } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { listConversations, listMessages, sendMessage, uploadFile, fileDownloadUrl, type ConversationSummary, type Message } from "@/lib/api";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 export function MessagesPage() {
   const { data: session } = useSession();
+  const { c: focusConvId } = useSearch({ strict: false }) as { c?: string };
   const [convs, setConvs] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Message[]>([]);
@@ -23,10 +24,13 @@ export function MessagesPage() {
     listConversations()
       .then((c) => {
         setConvs(c);
-        if (c.length > 0) setActiveId(c[0].id);
+        if (c.length > 0) {
+          const preferred = focusConvId && c.some((x) => x.id === focusConvId) ? focusConvId : c[0].id;
+          setActiveId(preferred);
+        }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [focusConvId]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -88,7 +92,10 @@ export function MessagesPage() {
             {loading ? (
               <div className="p-6 text-center text-[13px] text-ink-60">Loading…</div>
             ) : convs.length === 0 ? (
-              <div className="p-6 text-[13px] text-ink-60">No conversations yet. They start automatically when a proposal is accepted.</div>
+              <div className="p-6 text-[13px] text-ink-60">
+                No conversations yet. They start when you message an expert or a proposal is accepted.
+                <Link to="/experts" className="mt-3 block font-semibold text-ink underline">Browse experts →</Link>
+              </div>
             ) : (
               convs.map((c) => (
                 <button
@@ -202,8 +209,11 @@ export function MessagesPage() {
                 </form>
               </>
             ) : (
-              <div className="flex flex-1 items-center justify-center text-[13px] text-ink-60">
-                Pick a conversation to start.
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-[13px] text-ink-60">
+                <p>{convs.length === 0 ? "You don't have any conversations yet." : "Pick a conversation to start."}</p>
+                {convs.length === 0 && (
+                  <Link to="/experts" className="font-semibold text-ink underline">Find an expert to message</Link>
+                )}
               </div>
             )}
           </section>

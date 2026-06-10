@@ -639,6 +639,59 @@ async def logout(request: Request, response: Response):
 
 
 # =========================================================================
+# Account settings — profile + password
+# =========================================================================
+class UpdateMeIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    picture: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+@app.patch("/api/me")
+async def update_me(payload: UpdateMeIn, user: User = Depends(get_current_user)):
+    updates: dict = {}
+    if payload.name is not None:
+        updates["name"] = payload.name.strip()
+    if payload.picture is not None:
+        updates["picture"] = payload.picture.strip() or None
+    if updates:
+        await db.users.update_one({"user_id": user.user_id}, {"$set": updates})
+    u = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
+    return User(**u).model_dump()
+
+
+@app.post("/api/me/password")
+async def change_password(
+    payload: ChangePasswordIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    u = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not u or not u.get("password_hash"):
+        # OAuth-only accounts (e.g. Google sign-in) have no password to change.
+        raise HTTPException(
+            status_code=400,
+            detail="This account signs in without a password (e.g. Google). Password change is unavailable.",
+        )
+    if not _verify(payload.current_password, u["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": {"password_hash": _hash(payload.new_password)}},
+    )
+    # Invalidate every other session, but keep the caller signed in.
+    current = _extract_token(request)
+    await db.user_sessions.delete_many(
+        {"user_id": user.user_id, "session_token": {"$ne": current}}
+    )
+    return {"ok": True}
+
+
+# =========================================================================
 # Password reset
 # =========================================================================
 def _hash_token(token: str) -> str:
@@ -949,7 +1002,10 @@ async def submit_proposal(brief_id: str, payload: ProposalIn, user: User = Depen
             status_code=403,
             detail="You must complete WorkSoy vetting before sending proposals. Open /vetting to continue.",
         )
-    dup = await db.proposals.find_one({"brief_id": brief_id, "expert_user_id": user.user_id}, {"_id": 0, "id": 1})
+    dup = await db.proposals.find_one(
+        {"brief_id": brief_id, "expert_user_id": user.user_id, "status": {"$ne": "withdrawn"}},
+        {"_id": 0, "id": 1},
+    )
     if dup:
         raise HTTPException(status_code=400, detail="You already submitted a proposal for this brief")
     pid = f"prp_{uuid.uuid4().hex[:10]}"
@@ -1100,6 +1156,34 @@ async def reject_proposal(proposal_id: str, user: User = Depends(get_current_use
         href=f"/briefs/{brief['id']}",
         entity_id=proposal_id,
     )
+    return {"ok": True}
+
+
+@app.post("/api/proposals/{proposal_id}/withdraw")
+async def withdraw_proposal(proposal_id: str, user: User = Depends(get_current_user)):
+    prop = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if prop["expert_user_id"] != user.user_id:
+        raise HTTPException(status_code=403, detail="You can only withdraw your own proposal")
+    if prop["status"] != "pending":
+        raise HTTPException(status_code=400, detail=f"A {prop['status']} proposal cannot be withdrawn")
+    await db.proposals.update_one({"id": proposal_id}, {"$set": {"status": "withdrawn"}})
+    # Keep the brief's visible proposal count accurate (submit incremented it).
+    await db.briefs.update_one(
+        {"id": prop["brief_id"], "proposal_count": {"$gt": 0}},
+        {"$inc": {"proposal_count": -1}},
+    )
+    brief = await db.briefs.find_one({"id": prop["brief_id"]}, {"_id": 0})
+    if brief:
+        await _notify(
+            brief["user_id"],
+            type="proposal.withdrawn",
+            title="A proposal was withdrawn",
+            body=f"{prop.get('expert_name', 'An expert')} withdrew their proposal on \u201c{brief['title']}\u201d.",
+            href=f"/briefs/{brief['id']}",
+            entity_id=proposal_id,
+        )
     return {"ok": True}
 
 
@@ -1448,6 +1532,50 @@ async def my_conversations(user: User = Depends(get_current_user)):
             unread=unread,
         ))
     return out
+
+
+class DirectConversationIn(BaseModel):
+    expert_id: str
+
+
+@app.post("/api/conversations/direct")
+async def start_direct_conversation(payload: DirectConversationIn, user: User = Depends(get_current_user)):
+    """Open (or reuse) a 1:1 conversation with an expert. Powers the
+    "Message" CTA on the expert profile."""
+    expert = await db.experts.find_one({"id": payload.expert_id}, {"_id": 0, "user_id": 1})
+    if not expert:
+        raise HTTPException(status_code=404, detail="Expert not found")
+    expert_user_id = expert.get("user_id")
+    if not expert_user_id:
+        raise HTTPException(status_code=400, detail="This expert isn't reachable for messages yet")
+    if expert_user_id == user.user_id:
+        raise HTTPException(status_code=400, detail="You can't message yourself")
+    participants = sorted([user.user_id, expert_user_id])
+    # One thread per pair: reuse an existing conversation (brief-scoped or direct).
+    existing = await db.conversations.find_one({"participants": participants}, {"_id": 0, "id": 1})
+    if existing:
+        return {"id": existing["id"]}
+    conv_id = f"cnv_{uuid.uuid4().hex[:10]}"
+    await db.conversations.insert_one({
+        "id": conv_id,
+        "brief_id": None,
+        "brief_title": None,
+        "proposal_id": None,
+        "contract_id": None,
+        "participants": participants,
+        "last_body": None,
+        "last_at": _now(),
+        "read_by": {},
+    })
+    await _notify(
+        expert_user_id,
+        type="message.new",
+        title=f"{user.name} wants to connect",
+        body="You have a new message thread on WorkSoy.",
+        href="/messages",
+        entity_id=conv_id,
+    )
+    return {"id": conv_id}
 
 
 @app.get("/api/conversations/{conv_id}/messages", response_model=List[MessageOut])

@@ -33,6 +33,8 @@ import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { VettingPage } from "./pages/VettingPage";
 import { ProcessPage } from "./pages/ProcessPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { AccountSettingsPage } from "./pages/AccountSettingsPage";
+import { AcceptableUsePage } from "./pages/AcceptableUsePage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -64,11 +66,20 @@ const routes = [
   make("/briefs", BriefsPage),
   createRoute({ getParentRoute: () => rootRoute, path: "/briefs/$briefId", component: BriefDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/contracts/$contractId", component: ContractPage }),
-  make("/messages", MessagesPage),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/messages",
+    component: MessagesPage,
+    validateSearch: (s: Record<string, unknown>): { c?: string } => ({
+      c: typeof s.c === "string" ? s.c : undefined,
+    }),
+  }),
+  make("/settings", AccountSettingsPage),
   make("/admin/login", AdminLoginPage),
   make("/admin", AdminPage),
   make("/legal/terms", TermsPage),
   make("/legal/privacy", PrivacyPage),
+  make("/legal/acceptable-use", AcceptableUsePage),
   make("/forgot-password", ForgotPasswordPage),
   make("/reset-password", ResetPasswordPage),
   make("/vetting", VettingPage),

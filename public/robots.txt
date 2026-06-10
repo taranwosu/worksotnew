@@ -10,5 +10,6 @@ Disallow: /post-request
 Disallow: /briefs/
 Disallow: /contracts/
 Disallow: /messages
+Disallow: /settings
 
 Sitemap: https://worksoy.com/sitemap.xml

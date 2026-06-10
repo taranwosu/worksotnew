@@ -161,6 +161,17 @@ export async function apiLogout() {
   await req<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 }
 
+export async function updateMyAccount(payload: { name?: string; picture?: string | null }) {
+  return req<AuthUser>("/api/me", { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function changeMyPassword(current_password: string, new_password: string) {
+  return req<{ ok: boolean }>("/api/me/password", {
+    method: "POST",
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
 export async function apiRequestPasswordReset(email: string) {
   return req<{ ok: boolean }>("/api/auth/password-reset/request", {
     method: "POST",
@@ -257,6 +268,7 @@ export async function listProposalsForBrief(briefId: string) {
 export async function listMyProposals() { return req<Proposal[]>("/api/proposals/mine"); }
 export async function acceptProposal(id: string) { return req<Contract>(`/api/proposals/${id}/accept`, { method: "POST" }); }
 export async function rejectProposal(id: string) { return req<{ ok: boolean }>(`/api/proposals/${id}/reject`, { method: "POST" }); }
+export async function withdrawProposal(id: string) { return req<{ ok: boolean }>(`/api/proposals/${id}/withdraw`, { method: "POST" }); }
 
 // ================= Contracts + Milestones + Payments =================
 export type Milestone = {
@@ -333,6 +345,9 @@ export type Message = {
 };
 
 export async function listConversations() { return req<ConversationSummary[]>("/api/conversations/mine"); }
+export async function startDirectConversation(expert_id: string) {
+  return req<{ id: string }>("/api/conversations/direct", { method: "POST", body: JSON.stringify({ expert_id }) });
+}
 export async function listMessages(convId: string) { return req<Message[]>(`/api/conversations/${convId}/messages`); }
 export async function sendMessage(convId: string, body: string, file_id?: string) {
   return req<Message>(`/api/conversations/${convId}/messages`, { method: "POST", body: JSON.stringify({ body, file_id }) });
