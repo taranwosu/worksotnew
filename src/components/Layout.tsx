@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
-import { getMyVetting } from "@/lib/api";
+import { getMyVetting, listConversations } from "@/lib/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { Toaster } from "@/components/ui/sonner";
@@ -31,8 +31,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const hasExpertProfile = session?.user?.role === "expert";
   const amIAdmin = session?.user?.role === "admin";
-  const unreadCount = 0;
+  const [unreadCount, setUnreadCount] = useState(0);
   const [vettingStage, setVettingStage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!session) {
+      setUnreadCount(0);
+      return;
+    }
+    let cancelled = false;
+    const fetchUnread = () => {
+      listConversations()
+        .then((convs) => {
+          if (!cancelled) setUnreadCount(convs.reduce((s, c) => s + c.unread, 0));
+        })
+        .catch(() => {});
+    };
+    fetchUnread();
+    const id = setInterval(fetchUnread, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [session, routerState.location.pathname]);
 
   useEffect(() => {
     if (!hasExpertProfile) {
