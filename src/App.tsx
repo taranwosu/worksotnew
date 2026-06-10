@@ -7,6 +7,7 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 import { createBrowserHistory } from "@tanstack/history";
+import { Toaster } from "sonner";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { ExpertsPage } from "./pages/ExpertsPage";
@@ -26,13 +27,27 @@ import { ContractPage } from "./pages/ContractPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 const rootRoute = createRootRoute({
   component: () => (
     <Layout>
       <Outlet />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          classNames: {
+            toast:
+              "!border !border-ink-12 !bg-white !text-ink !shadow-[0_24px_60px_-20px_rgba(26,26,26,0.25)] !font-sans",
+            description: "!text-ink-60",
+            success: "!border-sun !text-ink",
+            error: "!border-rust !text-rust",
+          },
+        }}
+      />
     </Layout>
   ),
+  notFoundComponent: NotFoundPage,
 });
 
 const make = (path: string, component: React.FC) =>

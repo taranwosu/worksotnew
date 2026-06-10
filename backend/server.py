@@ -41,6 +41,47 @@ ADMIN_PASSWORD = "WorkSoy!Admin2026"
 UPLOADS_DIR = _Path(os.environ.get("UPLOADS_DIR", "/app/backend/uploads"))
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
+ALLOWED_FILE_TYPES = {
+    # Documents
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+    "text/csv",
+    "text/markdown",
+    # Images
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+    "image/svg+xml",
+    # Archives
+    "application/zip",
+    "application/x-zip-compressed",
+}
+
+# Auto-rotate the JWT secret if the dev default is still in place.
+_DEFAULT_JWT_SECRET = "worksoy-dev-secret-change-in-prod-5c8a7e1b"
+if JWT_SECRET == _DEFAULT_JWT_SECRET:
+    _new = uuid.uuid4().hex + uuid.uuid4().hex
+    try:
+        _env_path = _Path(__file__).resolve().parent / ".env"
+        if _env_path.exists():
+            txt = _env_path.read_text()
+            if _DEFAULT_JWT_SECRET in txt:
+                _env_path.write_text(txt.replace(_DEFAULT_JWT_SECRET, _new))
+        JWT_SECRET = _new
+        os.environ["JWT_SECRET"] = _new
+        # Existing sessions signed with the old secret are invalid; drop them.
+        # (Done inside startup so we have an event loop.)
+    except Exception as _e:  # pragma: no cover
+        logging.warning("could not auto-rotate JWT_SECRET: %s", _e)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
@@ -405,6 +446,28 @@ async def google_session(payload: GoogleSessionIn, response: Response):
 @app.get("/api/auth/me")
 async def me(user: User = Depends(get_current_user)):
     return user.model_dump()
+
+
+@app.get("/api/auth/session")
+async def get_session(request: Request):
+    """Quiet session probe — always returns 200 to avoid 401 noise on public pages."""
+    token = _extract_token(request)
+    if not token:
+        return {"user": None}
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not sess:
+        return {"user": None}
+    exp = sess["expires_at"]
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < _now():
+        return {"user": None}
+    udoc = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0, "password_hash": 0})
+    if not udoc:
+        return {"user": None}
+    return {"user": User(**udoc).model_dump()}
 
 
 @app.post("/api/auth/logout")
@@ -1180,6 +1243,12 @@ async def upload_file(
     user: User = Depends(get_current_user),
 ):
     await _authorize_file_scope(user, conversation_id, contract_id, milestone_id, dispute_id)
+    ctype = (file.content_type or "application/octet-stream").lower().split(";")[0].strip()
+    if ctype not in ALLOWED_FILE_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{ctype}'. Allowed: PDF, Office docs, images, CSV, TXT, ZIP.",
+        )
     fid = f"fil_{uuid.uuid4().hex[:10]}"
     safe_name = (file.filename or "upload").replace("/", "_")[:120]
     # Preserve extension if present
