@@ -30,7 +30,7 @@ const plans: Plan[] = [
     period: "/engagement",
     tagline: "A single named engagement.",
     bestFor: "First-time hirers, one-off projects",
-    fee: "10% operator fee",
+    fee: "Flat 15% platform fee",
     features: [
       "One active brief at a time",
       "Shortlist in 48 hours",
@@ -47,7 +47,7 @@ const plans: Plan[] = [
     period: "/ month",
     tagline: "For teams staffing routinely.",
     bestFor: "Operators running 2–8 concurrent engagements",
-    fee: "6% operator fee",
+    fee: "Flat 15% platform fee",
     features: [
       "Unlimited active briefs",
       "Priority matcher · 24-hr shortlist",
@@ -65,7 +65,7 @@ const plans: Plan[] = [
     price: "Bespoke",
     tagline: "A private network, your terms.",
     bestFor: "Group-level staffing, regulated industries",
-    fee: "Negotiated fee",
+    fee: "Flat 15% platform fee",
     features: [
       "Volume-tier placements",
       "SSO, SCIM, audit log",
@@ -90,7 +90,7 @@ const comparison = [
   {
     section: "Commercials",
     rows: [
-      ["Operator fee", "10%", "6%", "Negotiated"],
+      ["Platform fee", "15%", "15%", "15%"],
       ["Escrow payments", "Yes", "Yes", "Yes"],
       ["Rate benchmarks", "Standard", "Quarterly report", "On-demand"],
     ],
@@ -117,7 +117,7 @@ export function PricingPage() {
   usePageMeta({
     title: "Pricing",
     description:
-      "Transparent service-fee pricing for marketplace, practice, and enterprise tiers — no recruiter retainers, no agency markups.",
+      "A flat 15% platform fee across every tier — no recruiter retainers, no agency markups, no bidding. You pay on milestone acceptance.",
     path: "/pricing",
   });
   return (
@@ -144,7 +144,7 @@ export function PricingPage() {
               <p className="prose-lede">
                 No bidding, no per-seat traps, no platform fees dressed up as
                 subscriptions. You see the contractor&rsquo;s rate, you see our
-                operator fee, and you pay on milestone acceptance.
+                flat 15% platform fee, and you pay on milestone acceptance.
               </p>
             </div>
           </div>
@@ -232,7 +232,7 @@ export function PricingPage() {
                           plan.highlighted ? "text-cream/60" : "text-ink-40"
                         }
                       >
-                        Operator fee
+                        Platform fee
                       </dt>
                       <dd className="font-mono tabular">{plan.fee}</dd>
                     </div>
@@ -291,8 +291,8 @@ export function PricingPage() {
             align="split"
           />
 
-          <div className="mt-14 overflow-hidden rounded border border-ink-12 bg-white">
-            <table className="w-full text-left text-[13.5px]">
+          <div className="mt-14 overflow-x-auto rounded border border-ink-12 bg-white">
+            <table className="w-full min-w-[600px] text-left text-[13.5px]">
               <thead>
                 <tr className="border-b border-ink-12 bg-cream text-ink">
                   <th className="w-[36%] px-5 py-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
