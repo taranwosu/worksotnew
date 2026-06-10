@@ -17,9 +17,20 @@ Premium curated marketplace for senior project-based work (accountants, consulta
 - File storage: local disk `/app/backend/uploads/` (25MB limit, scope-auth'd)
 - Supervisor-managed (backend :8001, frontend :3000)
 
-## Status (Apr 2026 — iteration 3 complete)
+## Status (Jun 2026 — iteration 4 complete · Pre-Launch Sprint 1 closeout)
 
-### ✅ Implemented
+### ✅ Implemented (this iteration)
+- **401 console noise eliminated**: new silent `/api/auth/session` endpoint + `apiSession()` wrapper; `AuthProvider` no longer throws 401s on public routes
+- **All 11 `alert()` / `window.prompt()` calls removed** across MessagesPage, BriefDetailPage, ContractPage and DisputeThread — replaced with sonner `toast.error()` / `toast.success()`
+- **DisputeThread admin resolve UX**: inline note textarea + Confirm/Cancel buttons (no native prompt). New testids: `dispute-resolve-{release,refund,note,confirm,cancel}`
+- **404 NotFound page** wired into `rootRoute.notFoundComponent` (TanStack Router)
+- **Mock testimonials killed**: "Priya Raman" / "Marcus Thompson" / "Elena Marsh" removed from HomePage, SignUpPage, SignInPage; HomePage pull-quote replaced with median-time-to-signature copy
+- **JWT secret auto-generated** on first boot if still default
+- **`/api/files/upload` content-type allowlist** added
+- **CORS fix**: `VITE_BACKEND_URL` repointed to live preview host (was stale)
+- **AdminPage Rules-of-Hooks bug** (caught by testing agent): `useState(openDispute)` was declared after an early return — hoisted above the `isPending` guard
+
+### ✅ Previously implemented
 - Editorial redesign + 25 seeded experts (3 pending vetting) + seeded admin
 - Full hiring loop: post brief → browse → apply → accept → contract with 25%/75% milestones + auto conversation
 - Stripe escrow flow: fund milestone → submit → release (contract auto-completes when all milestones released)
