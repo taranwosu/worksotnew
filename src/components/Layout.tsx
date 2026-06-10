@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   Shield,
   Clock,
+  Settings,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
@@ -16,6 +17,7 @@ import { getMyVetting } from "@/lib/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { Toaster } from "@/components/ui/sonner";
+import { SupportWidget } from "@/components/SupportWidget";
 import { cn } from "@/lib/utils";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -238,6 +240,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             Vetting status
                           </MenuItem>
                         )}
+                        <MenuItem
+                          to="/settings"
+                          onClick={() => setProfileOpen(false)}
+                          icon={<Settings className="h-4 w-4" />}
+                        >
+                          Account settings
+                        </MenuItem>
                         {amIAdmin && (
                           <Link
                             to="/admin"
@@ -337,6 +346,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <MobileLink to="/messages" onClose={() => setMobileOpen(false)}>
                     Messages{unreadCount > 0 ? ` · ${unreadCount}` : ""}
                   </MobileLink>
+                  <MobileLink to="/settings" onClose={() => setMobileOpen(false)}>
+                    Account settings
+                  </MobileLink>
                   {hasExpertProfile ? (
                     <MobileLink to="/experts" onClose={() => setMobileOpen(false)}>
                       Browse projects
@@ -397,7 +409,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main>{children}</main>
 
       <Footer />
-      <Toaster position="bottom-right" richColors closeButton />
+      <SupportWidget />
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }
@@ -541,13 +554,13 @@ function Footer() {
               </Link>
             </li>
             <li>
-              <Link to="/contact" className="hover:text-cream">
-                Security
+              <Link to="/legal/acceptable-use" className="hover:text-cream">
+                Acceptable use
               </Link>
             </li>
             <li>
-              <Link to="/legal/privacy" className="hover:text-cream">
-                Cookies
+              <Link to="/contact" className="hover:text-cream">
+                Security
               </Link>
             </li>
           </ul>

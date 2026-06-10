@@ -13,6 +13,7 @@ import {
   getMyVetting,
   listShortlists,
   removeShortlist,
+  withdrawProposal,
   type Brief,
   type Proposal,
   type Contract,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/api";
 import { Container, Eyebrow, LinkButton, Tag } from "@/components/primitives";
 import { usePageMeta } from "@/lib/seo";
+import { toast } from "sonner";
 
 export function DashboardPage() {
   usePageMeta({
@@ -86,6 +88,16 @@ export function DashboardPage() {
 
   const firstName = (session.user.name || session.user.email).split(" ")[0];
   const vettingInProgress = vetting && !["approved", "rejected"].includes(vetting.stage);
+
+  const handleWithdraw = async (id: string) => {
+    try {
+      await withdrawProposal(id);
+      setProposals((prev) => prev.map((p) => (p.id === id ? { ...p, status: "withdrawn" } : p)));
+      toast.success("Proposal withdrawn");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to withdraw proposal");
+    }
+  };
 
   return (
     <div className="bg-cream pb-24 pt-16 md:pt-20">
@@ -211,7 +223,7 @@ export function DashboardPage() {
 
         <Section title="Your briefs" count={briefs.length} href="/post-request" cta="Post another">
           {loading ? <SkeletonRow /> : briefs.length === 0 ? (
-            <Empty text="No briefs yet. Post your first one to meet 3 matched experts within 48 hours." />
+            <Empty text="No briefs yet. Post your first one to meet 3 matched experts within 48 hours." cta={{ to: "/post-request", label: "Post a brief" }} />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {briefs.map((b) => (
@@ -244,26 +256,36 @@ export function DashboardPage() {
         {hasExpertProfile && (
           <Section title="Your proposals" count={proposals.length}>
             {proposals.length === 0 ? (
-              <Empty text="No proposals sent yet. Browse open briefs to send your first." />
+              <Empty text="No proposals sent yet. Browse open briefs to send your first." cta={{ to: "/briefs", label: "Browse open briefs" }} />
             ) : (
               <div className="overflow-hidden rounded border border-ink-12 bg-white">
                 {proposals.map((p) => (
-                  <Link
+                  <div
                     key={p.id}
-                    to="/briefs/$briefId"
-                    params={{ briefId: p.brief_id }}
-                    className="flex items-center justify-between gap-4 border-b border-ink-10 px-5 py-4 last:border-0 hover:bg-cream-2"
+                    className="flex items-center justify-between gap-4 border-b border-ink-10 px-5 py-4 last:border-0"
                   >
-                    <div className="min-w-0">
+                    <Link to="/briefs/$briefId" params={{ briefId: p.brief_id }} className="min-w-0 flex-1 hover:opacity-80">
                       <p className="truncate font-display text-[15px] font-semibold text-ink">Brief {p.brief_id}</p>
                       <p className="mt-0.5 text-[12px] text-ink-60">
                         ${p.proposed_rate.toLocaleString()} / {p.rate_type} · {p.estimated_duration_weeks}w
                       </p>
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Tag tone={p.status === "accepted" ? "sun" : p.status === "pending" ? "ink" : "outline"} size="sm">
+                        {p.status}
+                      </Tag>
+                      {p.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => handleWithdraw(p.id)}
+                          data-testid={`withdraw-${p.id}`}
+                          className="rounded border border-ink-20 px-2.5 py-1 text-[12px] font-semibold text-ink-60 transition-colors hover:border-rust hover:text-rust"
+                        >
+                          Withdraw
+                        </button>
+                      )}
                     </div>
-                    <Tag tone={p.status === "accepted" ? "sun" : p.status === "rejected" ? "outline" : "ink"} size="sm">
-                      {p.status}
-                    </Tag>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}
@@ -272,7 +294,7 @@ export function DashboardPage() {
 
         <Section title="Active contracts" count={contracts.length}>
           {contracts.length === 0 ? (
-            <Empty text="No active contracts. Accept a proposal on one of your briefs to start." />
+            <Empty text="No active contracts. Accept a proposal on one of your briefs to start." cta={{ to: "/briefs", label: "View your briefs" }} />
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {contracts.map((c) => (
@@ -300,7 +322,7 @@ export function DashboardPage() {
 
         <Section title="Messages" count={convs.length} href="/messages" cta="Open inbox">
           {convs.length === 0 ? (
-            <Empty text="No conversations yet. Once a proposal is accepted, a thread opens automatically." />
+            <Empty text="No conversations yet. Message an expert from their profile, or a thread opens automatically when a proposal is accepted." cta={{ to: "/experts", label: "Browse experts" }} />
           ) : (
             <div className="divide-y divide-ink-10 overflow-hidden rounded border border-ink-12 bg-white">
               {convs.slice(0, 3).map((c) => (
@@ -369,10 +391,15 @@ function Section({
   );
 }
 
-function Empty({ text }: { text: string }) {
+function Empty({ text, cta }: { text: string; cta?: { to: string; label: string } }) {
   return (
-    <div className="rounded border border-dashed border-ink-20 bg-white px-6 py-10 text-center text-[13px] text-ink-60">
-      {text}
+    <div className="rounded border border-dashed border-ink-20 bg-white px-6 py-10 text-center">
+      <p className="mx-auto max-w-md text-[13px] leading-relaxed text-ink-60">{text}</p>
+      {cta && (
+        <LinkButton to={cta.to} tone="ink" size="sm" arrow className="mt-4">
+          {cta.label}
+        </LinkButton>
+      )}
     </div>
   );
 }

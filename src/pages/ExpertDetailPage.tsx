@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useNavigate } from "@tanstack/react-router";
 import {
   Star,
   MapPin,
@@ -14,7 +14,9 @@ import {
   Quote,
 } from "lucide-react";
 import type { Expert } from "@/data/experts";
-import { fetchExpert, getExpertReviews, type Review } from "@/lib/api";
+import { fetchExpert, getExpertReviews, startDirectConversation, type Review } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
+import { toast } from "sonner";
 import {
   Container,
   Eyebrow,
@@ -25,9 +27,28 @@ import {
 
 export function ExpertDetailPage() {
   const { expertId } = useParams({ strict: false }) as { expertId: string };
+  const navigate = useNavigate();
+  const { data: session } = useSession();
   const [expert, setExpert] = useState<Expert | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messaging, setMessaging] = useState(false);
+
+  const handleMessage = async () => {
+    if (!session) {
+      navigate({ to: "/signup" });
+      return;
+    }
+    setMessaging(true);
+    try {
+      const { id } = await startDirectConversation(expertId);
+      navigate({ to: "/messages", search: { c: id } });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't start the conversation");
+    } finally {
+      setMessaging(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -300,11 +321,14 @@ export function ExpertDetailPage() {
                         size="lg"
                         arrow
                         className="w-full"
+                        data-testid="message-expert"
+                        onClick={handleMessage}
+                        disabled={messaging}
                         iconLeft={
                           <MessageSquare className="h-4 w-4" strokeWidth={2} />
                         }
                       >
-                        Message {expert.name.split(" ")[0]}
+                        {messaging ? "Opening…" : `Message ${expert.name.split(" ")[0]}`}
                       </Button>
                       <LinkButton
                         to="/post-request"
