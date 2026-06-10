@@ -70,6 +70,8 @@ export function AdminPage() {
     if (session?.user.role === "admin") load();
   }, [session]);
 
+  const [openDispute, setOpenDispute] = useState<string | null>(null);
+
   if (isPending || !session || session.user.role !== "admin") {
     return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-ink-40" /></div>;
   }
@@ -90,7 +92,6 @@ export function AdminPage() {
     await signOutUser();
     navigate({ to: "/admin/login" });
   };
-  const [openDispute, setOpenDispute] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-ink text-cream">

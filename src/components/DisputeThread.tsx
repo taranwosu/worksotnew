@@ -13,6 +13,7 @@ import {
 import { useSession } from "@/lib/auth-client";
 import { Button, Tag } from "@/components/primitives";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type Props = {
   disputeId: string;
@@ -30,6 +31,8 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [resolving, setResolving] = useState<null | "release" | "refund">(null);
+  const [resolveAction, setResolveAction] = useState<null | "release" | "refund">(null);
+  const [resolveNote, setResolveNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -66,7 +69,7 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
       setMessages((p) => [...p, m]);
       setDraft("");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send");
+      toast.error(err instanceof Error ? err.message : "Failed to send");
     } finally {
       setSending(false);
     }
@@ -81,21 +84,25 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
       const m = await postDisputeMessage(disputeId, `📎 ${meta.filename}`, meta.id);
       setMessages((p) => [...p, m]);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleResolve = async (action: "release" | "refund") => {
-    if (!dispute) return;
-    const note = window.prompt(`Resolution note for ${action} (optional):`) ?? undefined;
-    setResolving(action);
+  const confirmResolve = async () => {
+    if (!dispute || !resolveAction) return;
+    setResolving(resolveAction);
     try {
-      await adminResolveDispute(disputeId, action, note || undefined);
+      await adminResolveDispute(disputeId, resolveAction, resolveNote.trim() || undefined);
+      setResolveAction(null);
+      setResolveNote("");
       await load();
       onResolved?.();
+      toast.success(`Dispute resolved — ${resolveAction === "release" ? "released to expert" : "refunded to client"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to resolve dispute");
     } finally {
       setResolving(null);
     }
@@ -245,25 +252,69 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
             </button>
           </form>
           {isAdmin && (
-            <div className={cn("flex gap-2 border-t px-4 py-3", darkMode ? "border-cream/10" : "border-ink-10")}>
-              <Button
-                tone="sun"
-                size="sm"
-                onClick={() => handleResolve("release")}
-                disabled={resolving !== null}
-                data-testid={`dispute-resolve-release`}
-              >
-                {resolving === "release" ? "Releasing…" : "Release to expert"}
-              </Button>
-              <Button
-                tone="outline"
-                size="sm"
-                onClick={() => handleResolve("refund")}
-                disabled={resolving !== null}
-                data-testid={`dispute-resolve-refund`}
-              >
-                {resolving === "refund" ? "Refunding…" : "Refund client"}
-              </Button>
+            <div className={cn("space-y-2 border-t px-4 py-3", darkMode ? "border-cream/10" : "border-ink-10")}>
+              {resolveAction ? (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="resolve-note"
+                    className={cn("block font-mono text-[10.5px] uppercase tracking-[0.14em]", darkMode ? "text-cream/60" : "text-ink-60")}
+                  >
+                    {resolveAction === "release" ? "Release to expert" : "Refund client"} — note (optional)
+                  </label>
+                  <textarea
+                    id="resolve-note"
+                    value={resolveNote}
+                    onChange={(e) => setResolveNote(e.target.value)}
+                    placeholder="Why are you resolving this way? Visible to both parties."
+                    rows={2}
+                    data-testid="dispute-resolve-note"
+                    className={cn("w-full rounded border px-3 py-2 text-[13px] focus:outline-none",
+                      darkMode ? "border-cream/20 bg-ink-3 text-cream placeholder:text-cream/40 focus:border-cream" : "border-ink-20 bg-cream-2 text-ink placeholder:text-ink-40 focus:border-ink",
+                    )}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      tone={resolveAction === "release" ? "sun" : "outline"}
+                      size="sm"
+                      onClick={confirmResolve}
+                      disabled={resolving !== null}
+                      data-testid="dispute-resolve-confirm"
+                    >
+                      {resolving === resolveAction
+                        ? (resolveAction === "release" ? "Releasing…" : "Refunding…")
+                        : `Confirm ${resolveAction}`}
+                    </Button>
+                    <Button
+                      tone="outline"
+                      size="sm"
+                      onClick={() => { setResolveAction(null); setResolveNote(""); }}
+                      disabled={resolving !== null}
+                      data-testid="dispute-resolve-cancel"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    tone="sun"
+                    size="sm"
+                    onClick={() => setResolveAction("release")}
+                    data-testid="dispute-resolve-release"
+                  >
+                    Release to expert
+                  </Button>
+                  <Button
+                    tone="outline"
+                    size="sm"
+                    onClick={() => setResolveAction("refund")}
+                    data-testid="dispute-resolve-refund"
+                  >
+                    Refund client
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

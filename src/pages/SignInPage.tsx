@@ -50,12 +50,6 @@ export function SignInPage() {
         </>
       }
       lede="Pick up where you left off — active engagements, shortlists in review, and the inbox with your matcher."
-      quote={{
-        text:
-          "The dashboard is where I actually run procurement. Everything is one click from an SOW.",
-        author: "Elena Marsh",
-        role: "Head of Ops, Hearth",
-      }}
     >
       <div>
         <div className="flex items-center justify-between">

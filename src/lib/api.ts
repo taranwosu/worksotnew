@@ -157,6 +157,19 @@ export async function apiMe(): Promise<AuthUser | null> {
   }
 }
 
+/**
+ * Quiet session probe — always returns 200 (user may be null).
+ * Use this on first paint to avoid 401 console noise on public pages.
+ */
+export async function apiSession(): Promise<AuthUser | null> {
+  try {
+    const r = await req<{ user: AuthUser | null }>("/api/auth/session");
+    return r.user;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiLogout() {
   await req<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 }

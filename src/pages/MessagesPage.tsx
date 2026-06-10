@@ -5,6 +5,7 @@ import { useSession } from "@/lib/auth-client";
 import { listConversations, listMessages, sendMessage, uploadFile, fileDownloadUrl, type ConversationSummary, type Message } from "@/lib/api";
 import { Container, Eyebrow, Tag } from "@/components/primitives";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function MessagesPage() {
   const { data: session } = useSession();
@@ -65,7 +66,7 @@ export function MessagesPage() {
       const m = await sendMessage(activeId, body, meta.id);
       setMsgs((prev) => [...prev, m]);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

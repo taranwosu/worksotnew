@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { DisputeThread } from "@/components/DisputeThread";
 import { Container, Eyebrow, Button, Tag, FieldTextarea, FieldLabel } from "@/components/primitives";
+import { toast } from "sonner";
 
 export function ContractPage() {
   const { contractId } = useParams({ strict: false }) as { contractId: string };
@@ -105,15 +106,15 @@ export function ContractPage() {
       window.location.href = url;
     } catch (err) {
       setCheckoutFor(null);
-      alert(err instanceof Error ? err.message : "Checkout failed");
+      toast.error(err instanceof Error ? err.message : "Checkout failed");
     }
   };
 
   const handleSubmit = async (id: string) => {
-    try { await submitMilestone(id); load(); } catch (e) { alert(String(e)); }
+    try { await submitMilestone(id); load(); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to submit milestone"); }
   };
   const handleRelease = async (id: string) => {
-    try { await releaseMilestone(id); load(); } catch (e) { alert(String(e)); }
+    try { await releaseMilestone(id); load(); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to release milestone"); }
   };
 
   const handleFileDispute = async (e: React.FormEvent) => {
@@ -126,7 +127,7 @@ export function ContractPage() {
       setDisputeReason("");
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to file dispute");
+      toast.error(err instanceof Error ? err.message : "Failed to file dispute");
     } finally {
       setDisputeSubmitting(false);
     }
@@ -141,7 +142,7 @@ export function ContractPage() {
       setReviewComment("");
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to submit review");
+      toast.error(err instanceof Error ? err.message : "Failed to submit review");
     } finally {
       setReviewSubmitting(false);
     }

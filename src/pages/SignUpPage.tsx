@@ -71,17 +71,6 @@ export function SignUpPage() {
           ? "Pre-qualified briefs, escrow-backed payouts, and counter-signed SOWs — so you can focus on the work, not the sell."
           : "Brief us in ten minutes. Meet three hand-matched finalists inside 48 hours and sign the SOW by Friday."
       }
-      quote={{
-        text:
-          role === "expert"
-            ? "I replaced three months of outbound with one form. Briefs match what I&rsquo;d have picked out of a pile anyway."
-            : "Three shortlists, a working-session with the finalist, and a signed SOW by Friday.",
-        author: role === "expert" ? "Marcus Thompson" : "Priya Raman",
-        role:
-          role === "expert"
-            ? "Operations consultant · On roster since 2024"
-            : "COO, Northwind Labs",
-      }}
     >
       <div>
         <div className="flex items-center justify-between">

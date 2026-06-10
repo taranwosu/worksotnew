@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import {
   apiLogin,
   apiRegister,
-  apiMe,
+  apiSession,
   apiLogout,
   apiGoogleSession,
   type AuthUser,
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const processedSession = useRef(false);
 
   const refresh = useCallback(async () => {
-    const u = await apiMe();
+    const u = await apiSession();
     setData(toSession(u));
     setPending(false);
   }, []);

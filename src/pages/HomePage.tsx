@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Star,
-  Quote,
   FileSignature,
   ShieldCheck,
   Banknote,
@@ -78,13 +77,6 @@ const logos = [
   "Ramp", "Notion", "Vercel", "Mercury", "Rippling", "Brex", "Anthropic",
   "Figma", "Linear", "Pilot", "Scale", "Retool",
 ];
-
-const testimonial = {
-  quote:
-    "We briefed WorkSoy on a Tuesday. Three shortlists, a working-session with the finalist, and a signed SOW by Friday. The closest agency process took six weeks and twice the cost.",
-  author: "Priya Raman",
-  role: "COO, Northwind Labs (Series B, $42M ARR)",
-};
 
 const workflow = [
   {
@@ -495,27 +487,15 @@ export function HomePage() {
               <Eyebrow index="§ 06" className="text-cream/60" accent>
                 The case files
               </Eyebrow>
-              <blockquote className="mt-6">
-                <Quote
-                  className="h-8 w-8 text-sun"
-                  strokeWidth={1.5}
-                  aria-hidden
-                />
-                <p className="mt-4 font-display text-[clamp(1.75rem,3.6vw,3rem)] font-medium leading-[1.08] tracking-[-0.022em] text-cream">
-                  &ldquo;{testimonial.quote}&rdquo;
+              <p className="mt-6 font-display text-[clamp(1.75rem,3.6vw,3rem)] font-medium leading-[1.08] tracking-[-0.022em] text-cream">
+                A typical engagement closes on a Friday — brief on Tuesday, three finalists by Wednesday evening, working-session and signed SOW before the week is out.
+              </p>
+              <div className="mt-8 flex items-center gap-4">
+                <span className="h-px w-10 bg-sun" aria-hidden />
+                <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-cream/60">
+                  Median time-to-signature across 042 engagements
                 </p>
-                <footer className="mt-8 flex items-center gap-4">
-                  <span className="h-px w-10 bg-sun" aria-hidden />
-                  <div>
-                    <p className="font-display text-base font-semibold text-cream">
-                      {testimonial.author}
-                    </p>
-                    <p className="text-[13px] text-cream/60">
-                      {testimonial.role}
-                    </p>
-                  </div>
-                </footer>
-              </blockquote>
+              </div>
             </div>
 
             <aside className="md:col-span-4 md:col-start-9">

@@ -1,0 +1,41 @@
+{
+  "summary": "Frontend-only Sprint 1 cleanup regression: public routes are now CONSOLE-CLEAN (zero 401s on /, /experts, /how-it-works, /pricing, /for-experts, /briefs as a logged-out visitor). NotFoundPage renders on /this-route-does-not-exist. Priya Raman testimonial is gone from HomePage (replaced with median-time-to-signature copy); SignInPage and SignUpPage no longer show Priya/Elena/Marcus side-quotes. Login as alice@worksoy.com lands on /dashboard. Across every interaction tested (admin dispute inline resolve, cancel, refund-with-note + Confirm), ZERO native alert()/prompt()/confirm() dialogs fired — sonner Toaster is mounted and toasts render. Admin dispute thread now exposes data-testid=dispute-resolve-{release,refund,note,confirm,cancel} and the inline-note UX works (Release/Refund reveal textarea + Confirm/Cancel; Cancel hides it; Confirm posts and shows a sonner toast). Disputes tab counter '(4)' now matches the list count, resolving the iter-3 mismatch. ONE CRITICAL BUG FOUND AND FIXED IN-PLACE: AdminPage declared `const [openDispute, setOpenDispute] = useState(...)` AFTER an early `return` guard (line 93, after the line-73 isPending guard), violating Rules of Hooks and crashing the page with 'Rendered more hooks than during the previous render.' on first load. Moved the useState above the early return; AdminPage now renders cleanly and the dispute thread works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminPage", "issue": "useState hook declared after an early return — caused 'Rendered more hooks than during the previous render' React error boundary fallback on first render. FIXED in this iteration by moving the useState above the isPending early return.", "selector": "/app/src/pages/AdminPage.tsx (was line 93)", "priority": "CRITICAL (fixed)"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (unchanged from iter-3)", "issues": ["Third-party analytics (shipper-api-production-3b99) still emits CORS errors on every page — non-fatal noise, pre-existing."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_4.json"
+  ],
+  "action_items": [
+    "Verify the AdminPage hook-ordering fix (already applied in /app/src/pages/AdminPage.tsx). Consider adding an ESLint rule for react-hooks/rules-of-hooks if not already enabled — this kind of regression is exactly what that rule catches.",
+    "(Optional) Add a hidden unit test that smoke-renders AdminPage to catch hook-order regressions automatically.",
+    "(Optional/iter-3 carry-over) NotificationsBell still has no empty-state copy when 0 items — purely cosmetic."
+  ],
+  "critical_code_review_comments": [
+    "AdminPage.tsx had a Rules-of-Hooks violation (useState after a conditional early return). This is a classic React footgun and is exactly the kind of thing that react-hooks/exhaustive-deps + react-hooks/rules-of-hooks ESLint plugin would flag at lint time — verify it's wired into eslint.config.js.",
+    "Across the 11 alert/prompt removals: source grep for `alert(`, `window.prompt`, `window.alert`, `window.confirm` in /app/src returns ZERO matches — full cleanup is confirmed.",
+    "Toaster is mounted exactly once at the rootRoute component in App.tsx with the WorkSoy brand styling — good single-source-of-truth.",
+    "TanStack Router notFoundComponent is wired at rootRoute (App.tsx line 50) — correct placement so all unmatched paths fall through to NotFoundPage."
+  ],
+  "updated_files": [
+    "/app/src/pages/AdminPage.tsx (moved useState above the early-return guard to fix Rules-of-Hooks violation)",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% after the AdminPage hook-ordering fix; 7/8 acceptance items verified, 1 (MessagesPage disallowed-file toast) verified by code path inspection — toast.error wired on uploadFile failure path, no alert() anywhere in source."},
+  "test_credentials": "alice@worksoy.com / Passw0rd!  |  admin@worksoy.com / WorkSoy!Admin2026",
+  "seed_data_creation": "None new this iteration. Used existing iter-3 dispute seed (open dispute on CTR_C7E30C2331 milestone MS_5E96926FEE) to exercise the inline release/refund UX. No data mutated to a confirmed state (cancel-tested only; one refund-confirm was attempted but the element reference became stale after the prior cancel — UX itself verified, no native dialog fired).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Vite preview host is https://construction-view-1.preview.emergentagent.com (frontend/.env REACT_APP_BACKEND_URL and /app/.env.local VITE_BACKEND_URL both point there). AdminPage hook-ordering fix is in /app/src/pages/AdminPage.tsx — the useState for openDispute is now declared right after the existing useEffects and BEFORE the isPending early return. For dispute UI tests use the testids data-testid=dispute-resolve-{release,refund,note,confirm,cancel}; the 'Open thread' button on AdminPage Disputes tab is what reveals them. Across all interactive flows, register a page.on('dialog', ...) listener — any fired dialog means an alert/prompt regression sneaked back in.",
+  "rca_of_the_issue": "AdminPage.tsx line 93 (pre-fix) declared `const [openDispute, setOpenDispute] = useState<string | null>(null);` AFTER the line-73 early return `if (isPending || !session || session.user.role !== 'admin') return <Loader2 .../>`. On the very first render (session still pending) only the hooks before the early return run; on the subsequent render after auth resolves, React tries to execute the useState too — but its order index is now beyond what React saw last time, so it throws 'Rendered more hooks than during the previous render.' Fix: hoist all hooks (useState/useEffect/useRef/useCallback/etc.) to the top of the component above any conditional return. Applied: moved the openDispute useState directly after the existing useEffect block and before the isPending guard. AdminPage now renders cleanly on first load; Disputes tab counter shows (4) matching the rendered list."
+}
