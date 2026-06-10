@@ -18,7 +18,18 @@ export function ForgotPasswordPage() {
     setSubmitting(true);
     try {
       const r = await apiForgotPassword(email);
-      setDevLink(r.dev_link);
+      // The backend may return a link with an internal host — rewrite to the
+      // origin the user is actually on so the dev card link is clickable as-is.
+      let link = r.dev_link;
+      if (link) {
+        try {
+          const u = new URL(link);
+          link = `${window.location.origin}${u.pathname}${u.search}`;
+        } catch {
+          /* keep as-is if it's not a parseable URL */
+        }
+      }
+      setDevLink(link);
       setSent(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start password reset");
