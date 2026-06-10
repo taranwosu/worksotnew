@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearch } from "@tanstack/react-router";
-import { Loader2, CheckCircle2, ArrowUpRight, CircleDollarSign, Star, MessageSquare } from "lucide-react";
+import { Loader2, CheckCircle2, ArrowUpRight, CircleDollarSign, Star, MessageSquare, Download } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import {
   getContract,
@@ -9,6 +9,7 @@ import {
   submitMilestone,
   releaseMilestone,
   completeContract,
+  invoicePdfUrl,
   fileDispute,
   getContractDisputes,
   getContractReviews,
@@ -251,9 +252,20 @@ export function ContractPage() {
                     </Button>
                   )}
                   {m.status === "released" && (
-                    <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-60">
-                      <CheckCircle2 className="h-4 w-4 text-sun-2" /> Paid to expert
-                    </span>
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-60">
+                        <CheckCircle2 className="h-4 w-4 text-sun-2" /> Paid to expert
+                      </span>
+                      <a
+                        href={invoicePdfUrl(`inv_${m.id}`)}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-testid={`invoice-pdf-${m.id}`}
+                        className="inline-flex items-center gap-1.5 rounded border border-ink-20 bg-white px-3 py-1.5 text-[12.5px] font-semibold text-ink hover:border-ink"
+                      >
+                        <Download className="h-3.5 w-3.5" /> Invoice (PDF)
+                      </a>
+                    </>
                   )}
                   {m.status === "disputed" && (() => {
                     const d = disputes.find((x) => x.milestone_id === m.id && x.status === "open");

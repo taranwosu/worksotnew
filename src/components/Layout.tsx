@@ -406,7 +406,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
       </header>
 
-      <main>{children}</main>
+      {/* overflow-x-clip is a mobile safety net: editorial decorative art
+          (oversized off-canvas SVGs) can't trigger horizontal page scroll.
+          clip (not hidden) keeps the sticky header working. */}
+      <main className="overflow-x-clip">{children}</main>
 
       <Footer />
       <SupportWidget />

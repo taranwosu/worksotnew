@@ -83,9 +83,10 @@ const sections: LegalSection[] = [
           resolved.
         </p>
         <p>
-          WorkSoy charges a service fee disclosed at the time of contract
-          creation. Refunds, chargebacks, and currency conversion are subject to
-          Stripe&rsquo;s terms and applicable law.
+          WorkSoy charges a flat 15% platform fee on the value of each released
+          milestone, shown at the time of contract creation; the expert receives
+          the remaining 85%. Refunds, chargebacks, and currency conversion are
+          subject to Stripe&rsquo;s terms and applicable law.
         </p>
       </>
     ),
