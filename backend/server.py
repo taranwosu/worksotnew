@@ -70,6 +70,9 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 # Public app URL used for links inside transactional emails (no trailing slash).
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://worksoy.com").rstrip("/")
 PASSWORD_RESET_TTL_MINUTES = int(os.environ.get("PASSWORD_RESET_TTL_MINUTES", "60"))
+# Platform service fee applied to released milestones (expert's invoice).
+# Configurable so the rate can be tuned without a code change.
+PLATFORM_FEE_RATE = float(os.environ.get("PLATFORM_FEE_RATE", "0.15"))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
@@ -1477,6 +1480,18 @@ async def release_milestone(milestone_id: str, user: User = Depends(get_current_
     if ms["status"] not in ("submitted", "funded"):
         raise HTTPException(status_code=400, detail="Milestone cannot be released in its current state")
     await db.milestones.update_one({"id": milestone_id}, {"$set": {"status": "released", "released_at": _now()}})
+    # Move the expert's cut to their connected account (or queue it until
+    # they finish payout onboarding). Never blocks the release itself.
+    try:
+        await _queue_payout_for_milestone(ms, contract)
+    except Exception as e:  # noqa: BLE001
+        log.error("payout queueing failed for milestone %s: %s", milestone_id, e)
+        await _notify_admins(
+            type="payout.error",
+            title="Payout queueing failed",
+            body=f"Milestone {milestone_id}: {e}. Reconcile manually from the admin payouts panel.",
+            href="/admin",
+        )
     # If all milestones released, mark contract completed
     remaining = await db.milestones.count_documents({"contract_id": contract["id"], "status": {"$ne": "released"}})
     if remaining == 0:
@@ -1720,7 +1735,8 @@ async def _notify(
     email_subject: Optional[str] = None,
     email_html: Optional[str] = None,
 ) -> None:
-    """Create an in-app notification for a user. Emails are stubbed for now."""
+    """Create an in-app notification for a user. When email_subject/email_html
+    are given and an email provider is configured, also sends the email."""
     nid = f"ntf_{uuid.uuid4().hex[:10]}"
     await db.notifications.insert_one({
         "id": nid,
@@ -2223,6 +2239,10 @@ async def admin_resolve_dispute(dispute_id: str, payload: DisputeResolve, admin:
     if payload.action == "release":
         await db.milestones.update_one({"id": ms["id"]}, {"$set": {"status": "released", "released_at": _now()}})
         resolution = "Funds released to expert."
+        try:
+            await _queue_payout_for_milestone(ms, c)
+        except Exception as e:  # noqa: BLE001
+            log.error("payout queueing failed for disputed milestone %s: %s", ms["id"], e)
         remaining = await db.milestones.count_documents({"contract_id": c["id"], "status": {"$ne": "released"}})
         if remaining == 0:
             await db.contracts.update_one({"id": c["id"]}, {"$set": {"status": "completed"}})
@@ -2769,8 +2789,152 @@ async def my_invoices(user: User = Depends(get_current_user)):
     return out
 
 
-@app.get("/api/invoices/{invoice_id}")
-async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
+def _render_invoice_pdf(inv: dict) -> bytes:
+    """Render a one-page branded invoice/receipt PDF. reportlab is imported
+    lazily so the app still boots if the dependency is missing in a given
+    environment (the endpoint then returns 503)."""
+    try:
+        from io import BytesIO
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.units import inch
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        )
+    except ImportError as e:  # pragma: no cover - depends on deploy image
+        raise RuntimeError(
+            "PDF generation is unavailable (reportlab not installed)."
+        ) from e
+
+    ink = colors.HexColor("#1A1A1A")
+    sun = colors.HexColor("#FFC83D")
+    muted = colors.HexColor("#6B6B6B")
+    line = colors.HexColor("#E2E0DA")
+
+    currency = (inv.get("currency") or "USD").upper()
+    issued = inv.get("issued_at") or ""
+    try:
+        issued_disp = datetime.fromisoformat(issued).strftime("%B %d, %Y") if issued else ""
+    except (ValueError, TypeError):
+        issued_disp = str(issued)
+
+    def money(v: float) -> str:
+        return f"{currency} {v:,.2f}"
+
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=ink, fontSize=24, spaceAfter=2, alignment=0)
+    label = ParagraphStyle("label", parent=styles["Normal"], textColor=muted, fontSize=8, leading=11, fontName="Helvetica")
+    value = ParagraphStyle("value", parent=styles["Normal"], textColor=ink, fontSize=10.5, leading=14, fontName="Helvetica")
+    small = ParagraphStyle("small", parent=styles["Normal"], textColor=muted, fontSize=8, leading=12)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=LETTER,
+        leftMargin=0.85 * inch, rightMargin=0.85 * inch,
+        topMargin=0.85 * inch, bottomMargin=0.7 * inch,
+        title=f"WorkSoy Invoice {inv['id']}",
+    )
+    story: list = []
+
+    # Header: wordmark + invoice meta
+    header = Table(
+        [[
+            Paragraph('worksoy<font color="#FFC83D">.</font>', h1),
+            Paragraph(
+                f'<font color="#6B6B6B" size="8">INVOICE</font><br/>'
+                f'<font size="11">{inv["id"]}</font><br/>'
+                f'<font color="#6B6B6B" size="8">Issued {issued_disp}</font>',
+                ParagraphStyle("right", parent=value, alignment=2),
+            ),
+        ]],
+        colWidths=[3.4 * inch, 3.0 * inch],
+    )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story += [header, Spacer(1, 6)]
+    story += [Table([[""]], colWidths=[6.4 * inch], style=TableStyle([
+        ("LINEABOVE", (0, 0), (-1, -1), 1.2, sun),
+    ])), Spacer(1, 16)]
+
+    # Parties
+    parties = Table(
+        [[
+            Paragraph("FROM", label), Paragraph("BILLED TO", label),
+        ], [
+            Paragraph(f'{inv["expert_name"]}<br/><font color="#6B6B6B" size="8">Independent contractor · via WorkSoy</font>', value),
+            Paragraph(f'{inv["client_name"]}', value),
+        ]],
+        colWidths=[3.2 * inch, 3.2 * inch],
+    )
+    parties.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ("TOPPADDING", (0, 1), (-1, 1), 2),
+    ]))
+    story += [parties, Spacer(1, 18)]
+
+    # Line items
+    rows = [
+        [Paragraph("DESCRIPTION", label), Paragraph("AMOUNT", ParagraphStyle("r", parent=label, alignment=2))],
+        [
+            Paragraph(f'{inv["milestone_title"]}<br/><font color="#6B6B6B" size="8">{inv["brief_title"]} · contract {inv["contract_id"]}</font>', value),
+            Paragraph(money(inv["amount"]), ParagraphStyle("rv", parent=value, alignment=2)),
+        ],
+    ]
+    items = Table(rows, colWidths=[4.6 * inch, 1.8 * inch])
+    items.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, line),
+        ("LINEBELOW", (0, 1), (-1, 1), 0.6, line),
+        ("TOPPADDING", (0, 1), (-1, 1), 8),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+    ]))
+    story += [items, Spacer(1, 12)]
+
+    # Totals
+    totals = Table(
+        [
+            [Paragraph("Subtotal", value), Paragraph(money(inv["amount"]), ParagraphStyle("r", parent=value, alignment=2))],
+            [Paragraph(f'WorkSoy platform fee ({PLATFORM_FEE_RATE * 100:.1f}%)', value),
+             Paragraph(f'− {money(inv["platform_fee"])}', ParagraphStyle("r", parent=value, alignment=2))],
+            [Paragraph("<b>Net to expert</b>", value),
+             Paragraph(f'<b>{money(inv["net_to_expert"])}</b>', ParagraphStyle("r", parent=value, alignment=2))],
+        ],
+        colWidths=[4.6 * inch, 1.8 * inch],
+    )
+    totals.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LINEABOVE", (0, 2), (-1, 2), 1, ink),
+        ("TOPPADDING", (0, 2), (-1, 2), 8),
+    ]))
+    story += [totals, Spacer(1, 28)]
+
+    story += [Paragraph(
+        "Paid via WorkSoy escrow on milestone release. This document is a receipt of payment "
+        "for the work described above. WorkSoy Networks, Inc. facilitates payment between the "
+        "client and the expert and is not a party to the underlying engagement.",
+        small,
+    )]
+    story += [Spacer(1, 8), Paragraph(
+        "Questions? billing@worksoy.com", small,
+    )]
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+async def _resolve_invoice(invoice_id: str, user: User) -> dict:
+    """Shared invoice assembly + access check for the JSON and PDF endpoints."""
     if not invoice_id.startswith("inv_"):
         raise HTTPException(status_code=404, detail="Invoice not found")
     milestone_id = invoice_id[len("inv_"):]
@@ -2782,6 +2946,9 @@ async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Invoice not found")
     if user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin":
         raise HTTPException(status_code=403, detail="Not authorised")
+    issued = m.get("released_at") or _now()
+    amount = float(m["amount"])
+    fee = round(amount * PLATFORM_FEE_RATE, 2)
     return {
         "id": invoice_id,
         "milestone_id": m["id"],
@@ -2790,12 +2957,327 @@ async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
         "brief_title": c["brief_title"],
         "client_name": c["client_name"],
         "expert_name": c["expert_name"],
-        "amount": float(m["amount"]),
+        "amount": amount,
         "currency": c.get("currency", "USD"),
-        "issued_at": (m.get("released_at") or _now()).isoformat() if isinstance(m.get("released_at") or _now(), datetime) else m.get("released_at"),
-        "platform_fee": round(float(m["amount"]) * 0.15, 2),
-        "net_to_expert": round(float(m["amount"]) * 0.85, 2),
+        "issued_at": issued.isoformat() if isinstance(issued, datetime) else issued,
+        "platform_fee": fee,
+        "net_to_expert": round(amount - fee, 2),
     }
+
+
+@app.get("/api/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str, user: User = Depends(get_current_user)):
+    return await _resolve_invoice(invoice_id, user)
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: str, user: User = Depends(get_current_user)):
+    inv = await _resolve_invoice(invoice_id, user)
+    try:
+        pdf = _render_invoice_pdf(inv)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    filename = f"worksoy-invoice-{invoice_id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# =========================================================================
+# Expert payouts (Stripe Connect)
+# =========================================================================
+class StripeApiError(Exception):
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(f"Stripe API error ({status_code}): {message}")
+
+
+async def _stripe_request(
+    method: str,
+    path: str,
+    data: Optional[dict] = None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    headers = {}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    async with httpx.AsyncClient(timeout=20.0) as cx:
+        r = await cx.request(
+            method,
+            f"{STRIPE_API_BASE}{path}",
+            data=data,
+            headers=headers,
+            auth=(STRIPE_API_KEY, ""),
+        )
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    if r.status_code >= 400:
+        msg = (body.get("error") or {}).get("message") or "unknown error"
+        raise StripeApiError(r.status_code, msg)
+    return body
+
+
+class Payout(BaseModel):
+    id: str
+    milestone_id: str
+    contract_id: str
+    expert_user_id: str
+    milestone_title: Optional[str] = None
+    brief_title: Optional[str] = None
+    gross_amount: float
+    platform_fee: float
+    net_amount: float
+    currency: str = "usd"
+    status: str  # queued | paid | failed
+    stripe_transfer_id: Optional[str] = None
+    error: Optional[str] = None
+    attempts: int = 0
+    created_at: datetime
+    updated_at: datetime
+    paid_at: Optional[datetime] = None
+
+
+async def _attempt_transfer(payout: dict, stripe_account_id: str) -> dict:
+    """Try to move a payout's net amount to the expert's connected account.
+    Updates the payout document in place and returns the merged result. Never
+    raises — a failed transfer leaves the payout in 'failed' for admin retry."""
+    attempt = int(payout.get("attempts", 0)) + 1
+    try:
+        tr = await _stripe_request(
+            "POST",
+            "/transfers",
+            {
+                "amount": int(round(payout["net_amount"] * 100)),
+                "currency": payout.get("currency", "usd"),
+                "destination": stripe_account_id,
+                "transfer_group": payout["contract_id"],
+                "metadata[payout_id]": payout["id"],
+                "metadata[milestone_id]": payout["milestone_id"],
+            },
+            # Attempt-scoped key: dedupes redeliveries of one attempt while
+            # still letting an admin retry after a failure.
+            idempotency_key=f"payout-{payout['id']}-{attempt}",
+        )
+        update = {
+            "status": "paid",
+            "stripe_transfer_id": tr.get("id"),
+            "error": None,
+            "attempts": attempt,
+            "paid_at": _now(),
+            "updated_at": _now(),
+        }
+        log.info("payout %s paid via transfer %s", payout["id"], tr.get("id"))
+        await _notify(
+            payout["expert_user_id"],
+            type="payout.paid",
+            title="Payout sent 💸",
+            body=f"${payout['net_amount']:,.2f} for “{payout.get('milestone_title') or 'a milestone'}” is on its way to your bank.",
+            href="/dashboard",
+            entity_id=payout["id"],
+            email_subject="Your WorkSoy payout is on its way",
+            email_html=(
+                f"<p>We just sent ${payout['net_amount']:,.2f} to your connected payout "
+                f"account for &ldquo;{payout.get('milestone_title') or 'a milestone'}&rdquo;.</p>"
+                f"<p>Depending on your bank, funds typically arrive within 2 business days.</p>"
+                f"<p><a href=\"{APP_BASE_URL}/dashboard\">View your earnings</a></p>"
+            ),
+        )
+    except (StripeApiError, httpx.HTTPError) as e:
+        update = {"status": "failed", "error": str(e), "attempts": attempt, "updated_at": _now()}
+        log.warning("payout %s transfer failed: %s", payout["id"], e)
+        await _notify_admins(
+            type="payout.failed",
+            title="Expert payout failed",
+            body=f"Transfer of ${payout['net_amount']:,.2f} for “{payout.get('milestone_title') or payout['milestone_id']}” failed: {e}",
+            href="/admin",
+        )
+    await db.payouts.update_one({"id": payout["id"]}, {"$set": update})
+    return {**payout, **update}
+
+
+async def _queue_payout_for_milestone(ms: dict, contract: dict) -> Optional[dict]:
+    """Create the payout record for a released milestone and pay it out
+    immediately when the expert's Stripe account is ready. Idempotent on
+    milestone_id so a double release never double-pays."""
+    gross = float(ms["amount"])
+    fee = round(gross * PLATFORM_FEE_RATE, 2)
+    doc = {
+        "id": f"po_{uuid.uuid4().hex[:10]}",
+        "milestone_id": ms["id"],
+        "contract_id": contract["id"],
+        "expert_user_id": contract["expert_user_id"],
+        "milestone_title": ms.get("title"),
+        "brief_title": contract.get("brief_title"),
+        "gross_amount": gross,
+        "platform_fee": fee,
+        "net_amount": round(gross - fee, 2),
+        "currency": "usd",
+        "status": "queued",
+        "stripe_transfer_id": None,
+        "error": None,
+        "attempts": 0,
+        "created_at": _now(),
+        "updated_at": _now(),
+        "paid_at": None,
+    }
+    try:
+        await db.payouts.insert_one(dict(doc))
+    except Exception:  # duplicate milestone_id → payout already queued/paid
+        return await db.payouts.find_one({"milestone_id": ms["id"]}, {"_id": 0})
+    udoc = await db.users.find_one(
+        {"user_id": contract["expert_user_id"]}, {"_id": 0, "stripe_account_id": 1}
+    )
+    acct_id = (udoc or {}).get("stripe_account_id")
+    if acct_id:
+        try:
+            acct = await _stripe_request("GET", f"/accounts/{acct_id}")
+        except (StripeApiError, httpx.HTTPError) as e:
+            # Leave it queued; the status-endpoint flush or an admin retry
+            # will pick it up once Stripe is reachable again.
+            log.warning("payout %s: account lookup failed, staying queued: %s", doc["id"], e)
+            return doc
+        if acct.get("payouts_enabled"):
+            return await _attempt_transfer(doc, acct_id)
+    await _notify(
+        contract["expert_user_id"],
+        type="payout.queued",
+        title="Set up payouts to receive your earnings",
+        body=f"${doc['net_amount']:,.2f} is waiting for you. Connect a payout account from your dashboard to receive it.",
+        href="/dashboard",
+        entity_id=doc["id"],
+        email_subject="Action needed — set up payouts to receive your earnings",
+        email_html=(
+            f"<p>A client just released ${doc['net_amount']:,.2f} to you for "
+            f"&ldquo;{doc.get('milestone_title') or 'a milestone'}&rdquo;.</p>"
+            f"<p>Connect a payout account to receive the funds.</p>"
+            f"<p><a href=\"{APP_BASE_URL}/dashboard\">Set up payouts</a></p>"
+        ),
+    )
+    return doc
+
+
+async def _flush_queued_payouts(expert_user_id: str, stripe_account_id: str, limit: int = 20) -> int:
+    """Pay out any queued payouts for an expert whose account just became
+    transfer-ready. Returns the number successfully paid."""
+    queued = await db.payouts.find(
+        {"expert_user_id": expert_user_id, "status": "queued"}, {"_id": 0}
+    ).sort("created_at", 1).to_list(length=limit)
+    paid = 0
+    for p in queued:
+        result = await _attempt_transfer(p, stripe_account_id)
+        if result.get("status") == "paid":
+            paid += 1
+    return paid
+
+
+@app.post("/api/me/payouts/onboard")
+async def start_payout_onboarding(user: User = Depends(get_current_user)):
+    """Create (or reuse) the expert's Stripe Express account and hand back a
+    hosted onboarding link."""
+    profile = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1})
+    if not profile:
+        raise HTTPException(status_code=403, detail="Only experts can set up payouts")
+    udoc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "stripe_account_id": 1})
+    acct_id = (udoc or {}).get("stripe_account_id")
+    try:
+        if not acct_id:
+            acct = await _stripe_request(
+                "POST",
+                "/accounts",
+                {
+                    "type": "express",
+                    "email": user.email,
+                    "capabilities[transfers][requested]": "true",
+                    "metadata[user_id]": user.user_id,
+                },
+            )
+            acct_id = acct["id"]
+            await db.users.update_one(
+                {"user_id": user.user_id}, {"$set": {"stripe_account_id": acct_id}}
+            )
+        link = await _stripe_request(
+            "POST",
+            "/account_links",
+            {
+                "account": acct_id,
+                "refresh_url": f"{APP_BASE_URL}/dashboard?payouts=refresh",
+                "return_url": f"{APP_BASE_URL}/dashboard?payouts=return",
+                "type": "account_onboarding",
+            },
+        )
+    except StripeApiError as e:
+        log.warning("payout onboarding failed for %s: %s", user.user_id, e)
+        raise HTTPException(status_code=502, detail="Could not reach Stripe to start onboarding. Try again shortly.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach Stripe to start onboarding. Try again shortly.")
+    return {"url": link["url"]}
+
+
+@app.get("/api/me/payouts/status")
+async def my_payout_status(user: User = Depends(get_current_user)):
+    udoc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "stripe_account_id": 1})
+    acct_id = (udoc or {}).get("stripe_account_id")
+    queued = await db.payouts.aggregate([
+        {"$match": {"expert_user_id": user.user_id, "status": "queued"}},
+        {"$group": {"_id": None, "total": {"$sum": "$net_amount"}, "count": {"$sum": 1}}},
+    ]).to_list(length=1)
+    out = {
+        "connected": bool(acct_id),
+        "payouts_enabled": False,
+        "details_submitted": False,
+        "queued_count": int(queued[0]["count"]) if queued else 0,
+        "queued_net_amount": float(queued[0]["total"]) if queued else 0.0,
+    }
+    if acct_id:
+        try:
+            acct = await _stripe_request("GET", f"/accounts/{acct_id}")
+            out["payouts_enabled"] = bool(acct.get("payouts_enabled"))
+            out["details_submitted"] = bool(acct.get("details_submitted"))
+        except (StripeApiError, httpx.HTTPError) as e:
+            log.warning("payout status lookup failed for %s: %s", user.user_id, e)
+        # Self-healing: the moment the account can receive transfers, drain
+        # anything that queued up while the expert was onboarding.
+        if out["payouts_enabled"] and out["queued_count"] > 0:
+            flushed = await _flush_queued_payouts(user.user_id, acct_id)
+            out["queued_count"] -= flushed
+    return out
+
+
+@app.get("/api/me/payouts", response_model=List[Payout])
+async def my_payouts(user: User = Depends(get_current_user)):
+    docs = await db.payouts.find(
+        {"expert_user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=200)
+    return [Payout(**d) for d in docs]
+
+
+@app.get("/api/admin/payouts", response_model=List[Payout])
+async def admin_list_payouts(status: Optional[str] = None, user: User = Depends(require_admin)):
+    q = {"status": status} if status else {}
+    docs = await db.payouts.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    return [Payout(**d) for d in docs]
+
+
+@app.post("/api/admin/payouts/{payout_id}/retry", response_model=Payout)
+async def admin_retry_payout(payout_id: str, user: User = Depends(require_admin)):
+    p = await db.payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Payout not found")
+    if p["status"] == "paid":
+        raise HTTPException(status_code=400, detail="Payout already paid")
+    udoc = await db.users.find_one(
+        {"user_id": p["expert_user_id"]}, {"_id": 0, "stripe_account_id": 1}
+    )
+    acct_id = (udoc or {}).get("stripe_account_id")
+    if not acct_id:
+        raise HTTPException(status_code=400, detail="Expert has not connected a payout account yet")
+    result = await _attempt_transfer(p, acct_id)
+    return Payout(**result)
 
 
 # =========================================================================
@@ -4329,6 +4811,12 @@ async def _startup():
     await db.shortlists.create_index("user_id")
     await db.saved_searches.create_index("id", unique=True)
     await db.saved_searches.create_index("user_id")
+
+    # Expert payouts — one payout per milestone, ever.
+    await db.payouts.create_index("id", unique=True)
+    await db.payouts.create_index("milestone_id", unique=True)
+    await db.payouts.create_index("expert_user_id")
+    await db.payouts.create_index("status")
 
     # Managed service (pool, clients, tasks, deliverables, events, ratings)
     await db.pool_members.create_index("id", unique=True)

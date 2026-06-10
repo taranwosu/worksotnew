@@ -44,6 +44,28 @@ def _h(tok):
     return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
 
 
+def _approve_expert_vetting(admin_token, expert_token):
+    """Walk a fresh expert's vetting application to 'approved' via the admin
+    advance endpoint — the proposal hard-gate rejects unvetted experts."""
+    me = requests.get(f"{BASE_URL}/api/auth/me", headers=_h(expert_token), timeout=15).json()
+    rows = requests.get(
+        f"{BASE_URL}/api/admin/vetting/applications", headers=_h(admin_token), timeout=15
+    ).json()
+    row = next(r for r in rows if r["application"]["user_id"] == me["user_id"])
+    app_id = row["application"]["id"]
+    stage = row["application"]["stage"]
+    for _ in range(6):
+        if stage == "approved":
+            return
+        r = requests.post(
+            f"{BASE_URL}/api/admin/vetting/{app_id}/advance",
+            headers=_h(admin_token), json={"note": "TEST auto-approve"}, timeout=15,
+        )
+        assert r.status_code == 200, r.text
+        stage = r.json()["stage"]
+    assert stage == "approved", f"expert stuck at stage {stage}"
+
+
 # -------- session fixtures shared across tests ---------
 @pytest.fixture(scope="module")
 def client_token():
@@ -101,6 +123,10 @@ class TestExpertProfile:
         # role upgraded
         me = requests.get(f"{BASE_URL}/api/auth/me", headers=_h(expert_token), timeout=15).json()
         assert me["role"] == "expert"
+
+    def test_admin_approves_expert_through_vetting(self, admin_token, expert_token):
+        # Without this, the proposal hard-gate 403s the fresh expert below.
+        _approve_expert_vetting(admin_token, expert_token)
 
 
 # -------- Briefs CRUD + filters --------

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOutUser } from "@/lib/auth-client";
-import { getMyVetting, fetchMyManagedClient, fetchMyPoolMembership } from "@/lib/api";
+import { getMyVetting, listConversations, fetchMyManagedClient, fetchMyPoolMembership } from "@/lib/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { Toaster } from "@/components/ui/sonner";
@@ -33,7 +33,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const hasExpertProfile = session?.user?.role === "expert";
   const amIAdmin = session?.user?.role === "admin";
-  const unreadCount = 0;
+  const [unreadCount, setUnreadCount] = useState(0);
   const [vettingStage, setVettingStage] = useState<string | null>(null);
   const [isManagedClient, setIsManagedClient] = useState(false);
   const [isPoolMember, setIsPoolMember] = useState(false);
@@ -49,6 +49,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
     fetchMyPoolMembership().then((m) => { if (!cancelled) setIsPoolMember(!!m); });
     return () => { cancelled = true; };
   }, [session?.user?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!session) {
+      setUnreadCount(0);
+      return;
+    }
+    let cancelled = false;
+    const fetchUnread = () => {
+      listConversations()
+        .then((convs) => {
+          if (!cancelled) setUnreadCount(convs.reduce((s, c) => s + c.unread, 0));
+        })
+        .catch(() => {});
+    };
+    fetchUnread();
+    const id = setInterval(fetchUnread, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [session, routerState.location.pathname]);
 
   useEffect(() => {
     if (!hasExpertProfile) {
@@ -450,7 +468,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
       </header>
 
-      <main>{children}</main>
+      {/* overflow-x-clip is a mobile safety net: editorial decorative art
+          (oversized off-canvas SVGs) can't trigger horizontal page scroll.
+          clip (not hidden) keeps the sticky header working. */}
+      <main className="overflow-x-clip">{children}</main>
 
       <Footer />
       <SupportWidget />

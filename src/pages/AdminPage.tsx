@@ -10,9 +10,12 @@ import {
   adminTogglePublish,
   adminListBriefs,
   adminListDisputes,
+  adminListPayouts,
+  adminRetryPayout,
   type AdminStats,
   type Brief,
   type Dispute,
+  type Payout,
 } from "@/lib/api";
 import { DisputeThread } from "@/components/DisputeThread";
 import { AdminVettingPanel } from "@/components/AdminVettingPanel";
@@ -46,9 +49,11 @@ export function AdminPage() {
   const [experts, setExperts] = useState<ApiExpert[]>([]);
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
-  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "vetting" | "managed">("vetting");
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "payouts" | "vetting" | "managed">("vetting");
   const [loading, setLoading] = useState(true);
   const [openDispute, setOpenDispute] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
 
   useEffect(() => {
     if (isPending) return;
@@ -60,16 +65,18 @@ export function AdminPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [s, eAll, bs, ds] = await Promise.all([
+      const [s, eAll, bs, ds, po] = await Promise.all([
         adminStats(),
         adminListExperts(),
         adminListBriefs(),
         adminListDisputes().catch(() => [] as Dispute[]),
+        adminListPayouts().catch(() => [] as Payout[]),
       ]);
       setStats(s);
       setExperts(eAll as ApiExpert[]);
       setBriefs(bs);
       setDisputes(ds);
+      setPayouts(po);
     } finally {
       setLoading(false);
     }
@@ -94,6 +101,17 @@ export function AdminPage() {
   const handlePublish = async (id: string) => {
     await adminTogglePublish(id);
     load();
+  };
+  const handleRetryPayout = async (id: string) => {
+    setRetrying(id);
+    try {
+      const updated = await adminRetryPayout(id);
+      setPayouts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    } catch {
+      load();
+    } finally {
+      setRetrying(null);
+    }
   };
   const handleSignOut = async () => {
     await signOutUser();
@@ -133,7 +151,7 @@ export function AdminPage() {
         )}
 
         <div className="mt-10 flex gap-2 border-b border-cream/10">
-          {(["vetting", "managed", "queue", "all", "briefs", "disputes"] as const).map((t) => (
+          {(["vetting", "managed", "queue", "all", "briefs", "disputes", "payouts"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -153,7 +171,9 @@ export function AdminPage() {
                 ? `All experts (${experts.length})`
                 : t === "briefs"
                 ? `Briefs (${briefs.length})`
-                : `Disputes (${disputes.length})`}
+                : t === "disputes"
+                ? `Disputes (${disputes.length})`
+                : `Payouts (${payouts.filter((p) => p.status !== "paid").length})`}
             </button>
           ))}
         </div>
@@ -215,6 +235,39 @@ export function AdminPage() {
                     />
                   </div>
                 )}
+              </div>
+            ))}
+          </div>
+        ) : tab === "payouts" ? (
+          <div className="mt-8 overflow-hidden rounded border border-cream/10">
+            {payouts.length === 0 ? (
+              <div className="p-8 text-center text-[13px] text-cream/60">No payouts yet. They appear when a client releases a milestone.</div>
+            ) : payouts.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-4 border-b border-cream/10 px-5 py-4 last:border-0" data-testid={`admin-payout-${p.id}`}>
+                <div className="min-w-0">
+                  <p className="truncate font-display text-[14px] font-semibold">
+                    {p.milestone_title || "Milestone"}{p.brief_title ? ` · ${p.brief_title}` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[11.5px] text-cream/60">
+                    {new Date(p.created_at).toLocaleDateString()} · ${p.gross_amount.toLocaleString()} gross − ${p.platform_fee.toLocaleString()} fee · expert {p.expert_user_id}
+                  </p>
+                  {p.error && <p className="mt-1 truncate text-[11.5px] text-rust">{p.error}</p>}
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="font-mono tabular text-[14px] font-semibold">${p.net_amount.toLocaleString()}</span>
+                  <Tag tone={p.status === "paid" ? "sun" : "outline"} size="sm">{p.status}</Tag>
+                  {p.status !== "paid" && (
+                    <Button
+                      tone="outline"
+                      size="sm"
+                      disabled={retrying === p.id}
+                      onClick={() => handleRetryPayout(p.id)}
+                      data-testid={`admin-retry-payout-${p.id}`}
+                    >
+                      {retrying === p.id ? "Retrying…" : "Retry"}
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

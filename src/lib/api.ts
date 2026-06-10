@@ -664,6 +664,49 @@ export type InvoiceDetail = Invoice & {
 export async function getMyEarnings() { return req<Earnings>("/api/me/earnings"); }
 export async function listMyInvoices() { return req<Invoice[]>("/api/me/invoices"); }
 export async function getInvoice(id: string) { return req<InvoiceDetail>(`/api/invoices/${id}`); }
+export function invoicePdfUrl(id: string) {
+  return `${import.meta.env.VITE_BACKEND_URL}/api/invoices/${id}/pdf`;
+}
+
+// ================= Payouts (Stripe Connect) =================
+export type PayoutStatus = {
+  connected: boolean;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+  queued_count: number;
+  queued_net_amount: number;
+};
+export type Payout = {
+  id: string;
+  milestone_id: string;
+  contract_id: string;
+  expert_user_id: string;
+  milestone_title?: string | null;
+  brief_title?: string | null;
+  gross_amount: number;
+  platform_fee: number;
+  net_amount: number;
+  currency: string;
+  status: "queued" | "paid" | "failed";
+  stripe_transfer_id?: string | null;
+  error?: string | null;
+  attempts: number;
+  created_at: string;
+  updated_at: string;
+  paid_at?: string | null;
+};
+export async function getPayoutStatus() { return req<PayoutStatus>("/api/me/payouts/status"); }
+export async function startPayoutOnboarding() {
+  return req<{ url: string }>("/api/me/payouts/onboard", { method: "POST" });
+}
+export async function listMyPayouts() { return req<Payout[]>("/api/me/payouts"); }
+export async function adminListPayouts(status?: string) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  return req<Payout[]>(`/api/admin/payouts${q}`);
+}
+export async function adminRetryPayout(id: string) {
+  return req<Payout>(`/api/admin/payouts/${id}/retry`, { method: "POST" });
+}
 
 // ================= Shortlists + Saved searches =================
 export type Shortlist = {
