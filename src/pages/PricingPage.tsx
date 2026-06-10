@@ -291,8 +291,8 @@ export function PricingPage() {
             align="split"
           />
 
-          <div className="mt-14 overflow-hidden rounded border border-ink-12 bg-white">
-            <table className="w-full text-left text-[13.5px]">
+          <div className="mt-14 overflow-x-auto rounded border border-ink-12 bg-white">
+            <table className="w-full min-w-[600px] text-left text-[13.5px]">
               <thead>
                 <tr className="border-b border-ink-12 bg-cream text-ink">
                   <th className="w-[36%] px-5 py-4 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">

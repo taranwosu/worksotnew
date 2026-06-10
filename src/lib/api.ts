@@ -663,6 +663,9 @@ export type InvoiceDetail = Invoice & {
 export async function getMyEarnings() { return req<Earnings>("/api/me/earnings"); }
 export async function listMyInvoices() { return req<Invoice[]>("/api/me/invoices"); }
 export async function getInvoice(id: string) { return req<InvoiceDetail>(`/api/invoices/${id}`); }
+export function invoicePdfUrl(id: string) {
+  return `${import.meta.env.VITE_BACKEND_URL}/api/invoices/${id}/pdf`;
+}
 
 // ================= Shortlists + Saved searches =================
 export type Shortlist = {

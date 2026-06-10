@@ -14,6 +14,7 @@ import {
   listShortlists,
   removeShortlist,
   withdrawProposal,
+  invoicePdfUrl,
   type Brief,
   type Proposal,
   type Contract,
@@ -211,8 +212,17 @@ export function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-mono tabular text-[14px] font-semibold text-ink">${inv.amount.toLocaleString()}</span>
-                    <Link to="/contracts/$contractId" params={{ contractId: inv.contract_id }} className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink hover:underline" data-testid={`invoice-link-${inv.id}`}>
-                      <Download className="h-3.5 w-3.5" /> View
+                    <a
+                      href={invoicePdfUrl(inv.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink hover:underline"
+                      data-testid={`invoice-pdf-${inv.id}`}
+                    >
+                      <Download className="h-3.5 w-3.5" /> PDF
+                    </a>
+                    <Link to="/contracts/$contractId" params={{ contractId: inv.contract_id }} className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink-60 hover:underline" data-testid={`invoice-link-${inv.id}`}>
+                      View
                     </Link>
                   </div>
                 </div>
