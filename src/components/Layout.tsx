@@ -6,6 +6,7 @@ import {
   LogOut,
   User as UserIcon,
   MessageSquare,
+  Settings,
   ArrowUpRight,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -196,6 +197,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             Become an expert
                           </MenuItem>
                         )}
+                        <MenuItem
+                          to="/settings"
+                          onClick={() => setProfileOpen(false)}
+                          icon={<Settings className="h-4 w-4" />}
+                        >
+                          Settings
+                        </MenuItem>
                       </div>
                       <div className="border-t border-ink-08">
                         <button
@@ -305,6 +313,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </MobileLink>
                     </>
                   )}
+                  <MobileLink to="/settings" onClose={() => setMobileOpen(false)}>
+                    Settings
+                  </MobileLink>
                   <button
                     onClick={handleSignOut}
                     className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-ink hover:bg-ink-08"
@@ -469,23 +480,23 @@ function Footer() {
           </p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/terms" className="hover:text-cream" data-testid="footer-terms">
                 Terms
               </Link>
             </li>
             <li>
-              <Link to="/contact" className="hover:text-cream">
+              <Link to="/privacy" className="hover:text-cream" data-testid="footer-privacy">
                 Privacy
+              </Link>
+            </li>
+            <li>
+              <Link to="/aup" className="hover:text-cream" data-testid="footer-aup">
+                Acceptable use
               </Link>
             </li>
             <li>
               <Link to="/contact" className="hover:text-cream">
                 Security
-              </Link>
-            </li>
-            <li>
-              <Link to="/contact" className="hover:text-cream">
-                Cookies
               </Link>
             </li>
           </ul>

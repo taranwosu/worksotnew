@@ -1,0 +1,54 @@
+{
+  "summary": "P1 batch (password reset + account settings + legal pages) fully validated end-to-end via Playwright against the construction-view-1 preview host. 14/14 test cases PASSED. Zero native alert/prompt/confirm dialogs fired across the whole run (page.on('dialog', ...) listener never triggered). Alice's password is verifiably restored to Passw0rd! (final fresh sign-in into /dashboard succeeded). Alice's display name reverted to 'Alice Chen' (dashboard greets 'Good to see you, Alice.'). Backend curl validation was already performed by the main agent; this run focused on the UI integrations.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ForgotPasswordPage dev_link box", "issues": ["The returned dev_link points at the cluster-8.preview.emergentcf.cloud host instead of construction-view-1.preview.emergentagent.com. If a real reviewer clicks the link as-is, they leave the preview origin (potentially hitting an auth/session mismatch). Recommend deriving the reset URL from window.location.origin server-side OR rewriting it client-side in ForgotPasswordPage before display. Non-blocking for tests since we extracted the token and rebuilt the URL on the correct host."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [
+    "(Optional) Make the forgot-password dev_link respect the request origin so the dev-card link is clickable as-is on the preview host (right now it points at the internal cluster-8 host)."
+  ],
+  "critical_code_review_comments": [
+    "ResetPasswordPage correctly gates submit (disabled={submitting || !token}) AND surfaces the missing-token alert above the form — solid two-layer guard.",
+    "AccountSettingsPage correctly hides the Expert tab via `{isExpert && (...)}` based on session.user.role, AND additionally guards the panel body with `tab === 'expert' && isExpert` — defense in depth, good.",
+    "ForgotPasswordPage's success state ALWAYS renders (no enumeration leak) and conditionally appends the dev_link box only when the backend returned one — correct UX for the stubbed-delivery contract.",
+    "LegalShell wires the data-testid=legal-draft-stamp on the Tag (sun tone) — single source of truth, all three legal pages inherit it; verified visible on /terms, /privacy, /aup.",
+    "Footer links data-testid=footer-{terms,privacy,aup} are wired in Layout.tsx (lines 483/488/493) and resolve to the correct routes.",
+    "The session refresh after profile/email updates uses `await refresh()` from useAuth — confirmed the nav avatar chip re-reads the latest user name.",
+    "Toaster is mounted once at rootRoute (App.tsx). All error/success paths in the new pages use sonner toast — zero native dialog regressions."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (curl-validated by main agent, not re-run)", "frontend": "100% (14/14 acceptance items)"},
+  "test_credentials": "alice@worksoy.com / Passw0rd!  (verified restored)  |  expert1@worksoy.com / Passw0rd!  |  admin@worksoy.com / WorkSoy!Admin2026",
+  "seed_data_creation": "None. State was reverted: Alice's password is back at Passw0rd! and her display name is back at 'Alice Chen'. No persistent data left behind.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All P1 routes work: /forgot-password, /reset-password, /settings (with profile/password/email/expert tabs gated by role), /terms, /privacy, /aup. Test IDs in place: forgot-form/email/submit/success/dev-link/copy-link; reset-form/new/confirm/submit/error; settings-tab-{profile,password,email,expert}; profile-{form,name,picture,save}; password-{form,current,new,confirm,save}; email-{form,new,password,save}; expert-edit-link; legal-draft-stamp; footer-{terms,privacy,aup}; user-menu-trigger reveals the new /settings link. The forgot-password dev_link returns an internal cluster-8 host — when scripting reset flows, parse the token query-param and rebuild the URL on construction-view-1. /reset-password without ?token shows a [role=alert] block AND disables the submit button. A consumed token returns 'Invalid or already used reset token' via data-testid=reset-error.",
+  "acceptance_matrix": {
+    "T1_forgot_valid_email_success_with_dev_link_and_copy": "PASS",
+    "T2_forgot_unknown_email_no_enumeration_no_dev_link": "PASS",
+    "T3_reset_without_token_shows_error_and_disabled_submit": "PASS",
+    "T4_end_to_end_reset_then_signin_with_new_password": "PASS",
+    "T5_used_token_returns_4xx_error_via_reset_error_testid": "PASS (msg='Invalid or already used reset token')",
+    "T6_settings_unauthenticated_redirects_to_signin": "PASS",
+    "T7_expert_tab_visible_for_expert_user_links_to_onboarding": "PASS (href=/onboarding/expert)",
+    "T8_expert_tab_hidden_for_client_alice": "PASS",
+    "T9_profile_name_update_then_revert": "PASS (API succeeded; nav chip shows first-name 'Alice'; reverted to 'Alice Chen')",
+    "T10_password_wrong_current_shows_error_toast": "PASS (toast='Current password is incorrect')",
+    "T11_email_wrong_password_shows_error_toast_email_unchanged": "PASS (toast='Current password is incorrect'; email still alice@worksoy.com)",
+    "T12_user_menu_dropdown_shows_settings_link": "PASS",
+    "T13_footer_terms_privacy_aup_hrefs_correct": "PASS",
+    "T14_legal_pages_render_draft_stamp_and_multiple_sections": "PASS (terms: 11 sections, privacy: 10, aup: 7)",
+    "T15_regression_no_native_alert_prompt_confirm": "PASS (page.on dialog listener fired 0 times)",
+    "FINAL_password_restored_alice_can_signin_with_Passw0rd_bang": "PASS"
+  }
+}

@@ -174,6 +174,43 @@ export async function apiLogout() {
   await req<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 }
 
+// ---- Password reset (stubbed: dev_link returned + logged on backend) ----
+export async function apiForgotPassword(email: string) {
+  return req<{ ok: boolean; dev_link: string | null }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function apiResetPassword(token: string, new_password: string) {
+  return req<{ ok: boolean }>("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password }),
+  });
+}
+
+// ---- Account settings ----
+export async function apiChangePassword(current_password: string, new_password: string) {
+  return req<{ ok: boolean }>("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
+export async function apiChangeEmail(current_password: string, new_email: string) {
+  return req<{ ok: boolean; email: string }>("/api/auth/change-email", {
+    method: "POST",
+    body: JSON.stringify({ current_password, new_email }),
+  });
+}
+
+export async function apiUpdateProfile(p: { name?: string; picture?: string | null }) {
+  return req<AuthUser>("/api/auth/update-profile", {
+    method: "POST",
+    body: JSON.stringify(p),
+  });
+}
+
 // ================= Briefs & Proposals =================
 export type Brief = {
   id: string;

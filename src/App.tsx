@@ -28,6 +28,12 @@ import { MessagesPage } from "./pages/MessagesPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { AccountSettingsPage } from "./pages/AccountSettingsPage";
+import { TermsPage } from "./pages/TermsPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { AupPage } from "./pages/AupPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -72,6 +78,12 @@ const routes = [
   make("/messages", MessagesPage),
   make("/admin/login", AdminLoginPage),
   make("/admin", AdminPage),
+  make("/forgot-password", ForgotPasswordPage),
+  make("/reset-password", ResetPasswordPage),
+  make("/settings", AccountSettingsPage),
+  make("/terms", TermsPage),
+  make("/privacy", PrivacyPage),
+  make("/aup", AupPage),
 ];
 
 const routeTree = rootRoute.addChildren(routes);

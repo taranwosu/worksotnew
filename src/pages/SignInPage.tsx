@@ -99,12 +99,13 @@ export function SignInPage() {
           <div>
             <div className="flex items-center justify-between">
               <FieldLabel htmlFor="password">Password</FieldLabel>
-              <button
-                type="button"
+              <Link
+                to="/forgot-password"
+                data-testid="forgot-password-link"
                 className="text-[12px] text-ink-60 hover:text-ink"
               >
                 Forgot?
-              </button>
+              </Link>
             </div>
             <FieldInput
               id="password"
@@ -161,11 +162,11 @@ export function SignInPage() {
 
         <p className="mt-8 text-[11.5px] leading-relaxed text-ink-60">
           By signing in you agree to our{" "}
-          <Link to="/contact" className="link-sweep text-ink">
+          <Link to="/terms" className="link-sweep text-ink">
             Terms
           </Link>{" "}
           &amp;{" "}
-          <Link to="/contact" className="link-sweep text-ink">
+          <Link to="/privacy" className="link-sweep text-ink">
             Privacy
           </Link>
           . WorkSoy never sells member data.

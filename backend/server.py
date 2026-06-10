@@ -183,6 +183,30 @@ class GoogleSessionIn(BaseModel):
     session_id: str
 
 
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class UpdateProfileIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    picture: Optional[str] = None
+
+
+class ChangeEmailIn(BaseModel):
+    new_email: EmailStr
+    current_password: str
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -477,6 +501,106 @@ async def logout(request: Request, response: Response):
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
+
+
+# ---- Password reset (stubbed: link is logged + returned in dev_link) ----
+@app.post("/api/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordIn, request: Request):
+    """Generates a single-use reset token. Always returns ok=True even if email
+    doesn't exist (avoids account-enumeration). In dev/staging the link is
+    returned in `dev_link` and logged to stdout; production should mail it."""
+    email = payload.email.lower()
+    u = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
+    dev_link: Optional[str] = None
+    if u:
+        token = uuid.uuid4().hex + uuid.uuid4().hex
+        await db.password_resets.insert_one({
+            "token": token,
+            "user_id": u["user_id"],
+            "email": email,
+            "expires_at": _now() + timedelta(hours=1),
+            "used": False,
+            "created_at": _now(),
+        })
+        # Build a frontend link from the request origin.
+        origin = (
+            request.headers.get("origin")
+            or (f"https://{request.headers.get('host')}" if request.headers.get("host") else "")
+        )
+        dev_link = f"{origin}/reset-password?token={token}" if origin else f"/reset-password?token={token}"
+        logging.info(f"[password-reset] link for {email}: {dev_link}")
+    return {"ok": True, "dev_link": dev_link}
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password(payload: ResetPasswordIn):
+    rec = await db.password_resets.find_one({"token": payload.token}, {"_id": 0})
+    if not rec or rec.get("used"):
+        raise HTTPException(status_code=400, detail="Invalid or already used reset token")
+    exp = rec["expires_at"]
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < _now():
+        raise HTTPException(status_code=400, detail="Reset token expired")
+    await db.users.update_one(
+        {"user_id": rec["user_id"]},
+        {"$set": {"password_hash": _hash(payload.new_password)}},
+    )
+    await db.password_resets.update_one({"token": payload.token}, {"$set": {"used": True, "used_at": _now()}})
+    # Revoke all existing sessions for the user.
+    await db.user_sessions.delete_many({"user_id": rec["user_id"]})
+    return {"ok": True}
+
+
+# ---- Account settings ----
+@app.post("/api/auth/change-password")
+async def change_password(payload: ChangePasswordIn, user: User = Depends(get_current_user)):
+    u = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not u or not u.get("password_hash"):
+        raise HTTPException(status_code=400, detail="Password change not available for this account")
+    if not _verify(payload.current_password, u["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": {"password_hash": _hash(payload.new_password)}},
+    )
+    return {"ok": True}
+
+
+@app.post("/api/auth/change-email")
+async def change_email(payload: ChangeEmailIn, user: User = Depends(get_current_user)):
+    u = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not u or not u.get("password_hash"):
+        raise HTTPException(status_code=400, detail="Email change requires password — set one first")
+    if not _verify(payload.current_password, u["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    new_email = payload.new_email.lower()
+    if new_email == u["email"]:
+        raise HTTPException(status_code=400, detail="New email is the same as the current one")
+    exists = await db.users.find_one({"email": new_email}, {"_id": 0, "user_id": 1})
+    if exists:
+        raise HTTPException(status_code=400, detail="That email is already in use")
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"email": new_email}})
+    return {"ok": True, "email": new_email}
+
+
+@app.post("/api/auth/update-profile")
+async def update_profile(payload: UpdateProfileIn, user: User = Depends(get_current_user)):
+    updates: dict = {}
+    if payload.name is not None:
+        updates["name"] = payload.name.strip()
+    if payload.picture is not None:
+        updates["picture"] = payload.picture.strip() or None
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    await db.users.update_one({"user_id": user.user_id}, {"$set": updates})
+    udoc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
+    # Keep expert profile name in sync for the directory.
+    if "name" in updates:
+        await db.expert_profiles.update_one({"user_id": user.user_id}, {"$set": {"name": updates["name"]}})
+    return User(**udoc).model_dump()
 
 
 # =========================================================================
