@@ -24,6 +24,7 @@ Build a premium expert marketplace (Toptal-style) with: browseable expert direct
 - 25 seeded experts ship as pre-approved so the marketplace looks alive on day 1.
 
 ## What's been implemented (2026-01)
+- **Expert payouts via Stripe Connect (NEW 2026-06-10)**: releasing a milestone (incl. dispute-release) queues a payout (gross − 15% fee) in the `payouts` collection and transfers the net to the expert's Stripe Express account. Onboarding via `POST /api/me/payouts/onboard` (hosted link), status + auto-flush of queued payouts via `GET /api/me/payouts/status`, history via `GET /api/me/payouts`. Admin: list + retry at `/api/admin/payouts`. Dashboard Earnings card shows setup banner/active chip + payout history; admin console gained a Payouts tab. CI now runs the full backend pytest suite (Mongo service + stubbed emergentintegrations); requirements gained `python-multipart` + `bcrypt==4.3.0` pins (fresh installs broke with bcrypt 5).
 - **Public transparency page (NEW 2026-01-25)**: `/process` — hero with live acceptance % highlighted in sun-yellow, four-tile live stats panel, horizontal funnel bars (Applied → 5 stages → Approved/Rejected) with absolute counts, five "You show / We check" cards, promise section, FAQ, dual CTAs. Indexable. Backed by public endpoint `GET /api/process/stats` (no auth, anonymised aggregates only).
 - **Navbar polish (NEW 2026-01-25)**: "Vetting" link added at position 02 in the main nav; in-progress experts also see a sun-tinted "Continue vetting" pill (with Clock icon) between "Browse projects" and the bell.
 - **Onboarding button fix (NEW 2026-01-25)**: Save button now correctly reads "Save & enter vetting" (was stale "Publish profile" from a missed earlier edit).
@@ -54,7 +55,7 @@ Build a premium expert marketplace (Toptal-style) with: browseable expert direct
 
 ## Next tasks
 1. Ask user to verify a sender domain at https://app.emailit.com + set `EMAIL_FROM`.
-2. Wire payout view on the Earnings card (bank/connect intent stub).
+2. ~~Wire payout view on the Earnings card~~ — done 2026-06-10 (full Stripe Connect payouts, not just a stub).
 3. Calendly integration on the screening stage.
 
 ## ENHANCEMENT IDEA (next session)

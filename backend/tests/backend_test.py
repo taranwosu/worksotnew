@@ -176,9 +176,12 @@ class TestAuth:
         data = r.json()
         assert data["email"] == pytest.shared_email.lower()
 
-    def test_me_without_token_401(self, api):
+    def test_me_without_token_returns_null(self, api):
+        # /api/auth/me responds 200 with a null body for anonymous visitors
+        # (a 401 here would flood the browser console on public pages).
         r = requests.get(f"{BASE_URL}/api/auth/me", timeout=15)
-        assert r.status_code == 401
+        assert r.status_code == 200
+        assert r.json() is None
 
     def test_logout_invalidates_session(self, api):
         token = getattr(pytest, "shared_token", None)
@@ -189,10 +192,11 @@ class TestAuth:
             timeout=15,
         )
         assert r.status_code == 200
-        # After logout, /me with same bearer should be 401
+        # After logout, /me with the same bearer resolves to no user (200 null)
         r2 = requests.get(
             f"{BASE_URL}/api/auth/me",
             headers={"Authorization": f"Bearer {token}"},
             timeout=15,
         )
-        assert r2.status_code == 401
+        assert r2.status_code == 200
+        assert r2.json() is None

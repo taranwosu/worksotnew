@@ -23,6 +23,8 @@ import {
   type Invoice,
   type VettingApplication,
   type Shortlist,
+  type PayoutStatus,
+  type Payout,
 } from "@/lib/api";
 import { Container, Eyebrow, LinkButton, Tag } from "@/components/primitives";
 import { usePageMeta } from "@/lib/seo";
@@ -45,6 +47,9 @@ export function DashboardPage() {
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [shortlist, setShortlist] = useState<Shortlist[]>([]);
+  const [payoutStatus, setPayoutStatus] = useState<PayoutStatus | null>(null);
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [onboarding, setOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,8 +69,10 @@ export function DashboardPage() {
       listMyInvoices().catch(() => []),
       getMyVetting().catch(() => null),
       listShortlists().catch(() => []),
+      getPayoutStatus().catch(() => null),
+      listMyPayouts().catch(() => []),
     ])
-      .then(([b, p, c, cv, ep, ea, iv, vt, sl]) => {
+      .then(([b, p, c, cv, ep, ea, iv, vt, sl, ps, po]) => {
         setBriefs(b);
         setProposals(p);
         setContracts(c);
@@ -75,9 +82,22 @@ export function DashboardPage() {
         setInvoices(iv);
         setVetting(vt);
         setShortlist(sl);
+        setPayoutStatus(ps);
+        setPayouts(po);
       })
       .finally(() => setLoading(false));
   }, [session]);
+
+  const handleSetUpPayouts = async () => {
+    setOnboarding(true);
+    try {
+      const { url } = await startPayoutOnboarding();
+      window.location.href = url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not start payout setup");
+      setOnboarding(false);
+    }
+  };
 
   if (isPending || !session) {
     return (
@@ -179,6 +199,36 @@ export function DashboardPage() {
 
         {hasExpertProfile && earnings && (
           <Section title="Earnings" count={undefined}>
+            {payoutStatus && !payoutStatus.payouts_enabled && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded border border-sun bg-sun/10 px-5 py-4" data-testid="payout-setup-banner">
+                <div>
+                  <p className="text-[13.5px] font-semibold text-ink">
+                    {payoutStatus.connected
+                      ? "Finish setting up payouts to receive your earnings."
+                      : "Set up payouts to receive your earnings."}
+                  </p>
+                  <p className="mt-1 text-[12.5px] text-ink-60">
+                    {payoutStatus.queued_count > 0
+                      ? `$${payoutStatus.queued_net_amount.toLocaleString()} is waiting for you — released funds are paid out as soon as your account is connected.`
+                      : "Released milestone funds are paid straight to your bank via Stripe."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSetUpPayouts}
+                  disabled={onboarding}
+                  data-testid="payout-setup-button"
+                  className="rounded bg-ink px-4 py-2 text-[13px] font-semibold text-cream transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {onboarding ? "Opening Stripe…" : payoutStatus.connected ? "Continue setup" : "Set up payouts"}
+                </button>
+              </div>
+            )}
+            {payoutStatus?.payouts_enabled && (
+              <p className="mb-4 inline-flex items-center gap-2 rounded-pill border border-ink-12 bg-white px-3 py-1.5 text-[12px] font-semibold text-ink" data-testid="payouts-active-chip">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Payouts active — released funds go straight to your bank
+              </p>
+            )}
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded border border-ink-12 bg-white p-5">
                 <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">Lifetime released</p>
@@ -192,6 +242,31 @@ export function DashboardPage() {
                 <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">Pending</p>
                 <p className="mt-3 font-display text-[26px] font-semibold tabular text-ink">${earnings.pending.toLocaleString()}</p>
               </div>
+            </div>
+          </Section>
+        )}
+
+        {hasExpertProfile && payouts.length > 0 && (
+          <Section title="Payouts" count={payouts.length}>
+            <div className="overflow-hidden rounded border border-ink-12 bg-white" data-testid="payouts-list">
+              {payouts.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-4 border-b border-ink-10 px-5 py-4 last:border-0">
+                  <div className="min-w-0">
+                    <p className="truncate font-display text-[14px] font-semibold text-ink">
+                      {p.milestone_title || "Milestone"}{p.brief_title ? ` · ${p.brief_title}` : ""}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-ink-60">
+                      {new Date(p.created_at).toLocaleDateString()} · ${p.gross_amount.toLocaleString()} gross − ${p.platform_fee.toLocaleString()} fee
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="font-mono tabular text-[14px] font-semibold text-ink">${p.net_amount.toLocaleString()}</span>
+                    <Tag tone={p.status === "paid" ? "sun" : p.status === "queued" ? "ink" : "outline"} size="sm">
+                      {p.status === "queued" ? "awaiting setup" : p.status}
+                    </Tag>
+                  </div>
+                </div>
+              ))}
             </div>
           </Section>
         )}

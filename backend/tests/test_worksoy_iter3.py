@@ -51,6 +51,28 @@ def _auth(tok):
     return {"Authorization": f"Bearer {tok}"}
 
 
+def _approve_expert_vetting(admin_token, expert_token):
+    """Walk a fresh expert's vetting application to 'approved' via the admin
+    advance endpoint — the proposal hard-gate rejects unvetted experts."""
+    me = requests.get(f"{BASE_URL}/api/auth/me", headers=_h(expert_token), timeout=15).json()
+    rows = requests.get(
+        f"{BASE_URL}/api/admin/vetting/applications", headers=_h(admin_token), timeout=15
+    ).json()
+    row = next(r for r in rows if r["application"]["user_id"] == me["user_id"])
+    app_id = row["application"]["id"]
+    stage = row["application"]["stage"]
+    for _ in range(6):
+        if stage == "approved":
+            return
+        r = requests.post(
+            f"{BASE_URL}/api/admin/vetting/{app_id}/advance",
+            headers=_h(admin_token), json={"note": "TEST auto-approve"}, timeout=15,
+        )
+        assert r.status_code == 200, r.text
+        stage = r.json()["stage"]
+    assert stage == "approved", f"expert stuck at stage {stage}"
+
+
 # ---------- shared fixtures ----------
 @pytest.fixture(scope="module")
 def client_token():
@@ -58,7 +80,18 @@ def client_token():
 
 
 @pytest.fixture(scope="module")
-def expert_token():
+def admin_token():
+    r = requests.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        timeout=15,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["session_token"]
+
+
+@pytest.fixture(scope="module")
+def expert_token(admin_token):
     email = f"TEST_iter3_expert_{uuid.uuid4().hex[:8]}@worksoy.com"
     tok = _register_or_login(email, "Passw0rd!", "Iter3 Expert", "expert")
     # Publish expert profile so they can take proposals
@@ -71,18 +104,9 @@ def expert_token():
         "yearsExperience": 3,
         "bio": "TEST iter3 expert bio " * 4,
     }, headers=_h(tok), timeout=15)
+    # Vetting hard-gate: proposals 403 until the expert is approved.
+    _approve_expert_vetting(admin_token, tok)
     return tok
-
-
-@pytest.fixture(scope="module")
-def admin_token():
-    r = requests.post(
-        f"{BASE_URL}/api/auth/login",
-        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
-        timeout=15,
-    )
-    assert r.status_code == 200, r.text
-    return r.json()["session_token"]
 
 
 @pytest.fixture(scope="module")

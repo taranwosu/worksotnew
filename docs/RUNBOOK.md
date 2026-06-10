@@ -120,6 +120,33 @@ the one configured for the `emergentintegrations` SDK. A 400 here is
 intentional: it tells Stripe to retry rather than silently swallowing the
 event.
 
+### Expert payouts (Stripe Connect)
+
+When a client releases a milestone, the expert's net share (gross minus
+the 15% platform fee) is transferred to their Stripe Express account.
+Each payout lives in the `payouts` collection, one per milestone
+(`status: queued | paid | failed`).
+
+- **`queued`** — the expert hasn't finished Connect onboarding. They get
+  an in-app + email nudge automatically, and queued payouts flush the
+  moment `payouts_enabled` flips true (checked on every
+  `/api/me/payouts/status` call from their dashboard). No action needed
+  unless it lingers — then chase the expert to finish onboarding.
+- **`failed`** — the transfer call errored (admins are notified). Read
+  `error` on the payout doc, fix the cause (usually insufficient platform
+  balance or a restricted connected account), then hit **Retry** in the
+  admin → Payouts tab (or `POST /api/admin/payouts/{id}/retry`).
+- **Insufficient balance** — transfers draw from the platform's Stripe
+  balance. If charges settle slower than releases, top up the balance or
+  wait for settlement, then retry.
+
+Useful query — payouts needing attention:
+
+```js
+db.payouts.find({ status: { $in: ["queued", "failed"] } })
+          .sort({ created_at: 1 });
+```
+
 ---
 
 ## 4. Auth incidents

@@ -1480,6 +1480,18 @@ async def release_milestone(milestone_id: str, user: User = Depends(get_current_
     if ms["status"] not in ("submitted", "funded"):
         raise HTTPException(status_code=400, detail="Milestone cannot be released in its current state")
     await db.milestones.update_one({"id": milestone_id}, {"$set": {"status": "released", "released_at": _now()}})
+    # Move the expert's cut to their connected account (or queue it until
+    # they finish payout onboarding). Never blocks the release itself.
+    try:
+        await _queue_payout_for_milestone(ms, contract)
+    except Exception as e:  # noqa: BLE001
+        log.error("payout queueing failed for milestone %s: %s", milestone_id, e)
+        await _notify_admins(
+            type="payout.error",
+            title="Payout queueing failed",
+            body=f"Milestone {milestone_id}: {e}. Reconcile manually from the admin payouts panel.",
+            href="/admin",
+        )
     # If all milestones released, mark contract completed
     remaining = await db.milestones.count_documents({"contract_id": contract["id"], "status": {"$ne": "released"}})
     if remaining == 0:
@@ -1723,7 +1735,8 @@ async def _notify(
     email_subject: Optional[str] = None,
     email_html: Optional[str] = None,
 ) -> None:
-    """Create an in-app notification for a user. Emails are stubbed for now."""
+    """Create an in-app notification for a user. When email_subject/email_html
+    are given and an email provider is configured, also sends the email."""
     nid = f"ntf_{uuid.uuid4().hex[:10]}"
     await db.notifications.insert_one({
         "id": nid,
@@ -2198,6 +2211,10 @@ async def admin_resolve_dispute(dispute_id: str, payload: DisputeResolve, admin:
     if payload.action == "release":
         await db.milestones.update_one({"id": ms["id"]}, {"$set": {"status": "released", "released_at": _now()}})
         resolution = "Funds released to expert."
+        try:
+            await _queue_payout_for_milestone(ms, c)
+        except Exception as e:  # noqa: BLE001
+            log.error("payout queueing failed for disputed milestone %s: %s", ms["id"], e)
         remaining = await db.milestones.count_documents({"contract_id": c["id"], "status": {"$ne": "released"}})
         if remaining == 0:
             await db.contracts.update_one({"id": c["id"]}, {"$set": {"status": "completed"}})
@@ -2941,6 +2958,301 @@ async def get_invoice_pdf(invoice_id: str, user: User = Depends(get_current_user
 
 
 # =========================================================================
+# Expert payouts (Stripe Connect)
+# =========================================================================
+class StripeApiError(Exception):
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(f"Stripe API error ({status_code}): {message}")
+
+
+async def _stripe_request(
+    method: str,
+    path: str,
+    data: Optional[dict] = None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    headers = {}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    async with httpx.AsyncClient(timeout=20.0) as cx:
+        r = await cx.request(
+            method,
+            f"{STRIPE_API_BASE}{path}",
+            data=data,
+            headers=headers,
+            auth=(STRIPE_API_KEY, ""),
+        )
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    if r.status_code >= 400:
+        msg = (body.get("error") or {}).get("message") or "unknown error"
+        raise StripeApiError(r.status_code, msg)
+    return body
+
+
+class Payout(BaseModel):
+    id: str
+    milestone_id: str
+    contract_id: str
+    expert_user_id: str
+    milestone_title: Optional[str] = None
+    brief_title: Optional[str] = None
+    gross_amount: float
+    platform_fee: float
+    net_amount: float
+    currency: str = "usd"
+    status: str  # queued | paid | failed
+    stripe_transfer_id: Optional[str] = None
+    error: Optional[str] = None
+    attempts: int = 0
+    created_at: datetime
+    updated_at: datetime
+    paid_at: Optional[datetime] = None
+
+
+async def _attempt_transfer(payout: dict, stripe_account_id: str) -> dict:
+    """Try to move a payout's net amount to the expert's connected account.
+    Updates the payout document in place and returns the merged result. Never
+    raises — a failed transfer leaves the payout in 'failed' for admin retry."""
+    attempt = int(payout.get("attempts", 0)) + 1
+    try:
+        tr = await _stripe_request(
+            "POST",
+            "/transfers",
+            {
+                "amount": int(round(payout["net_amount"] * 100)),
+                "currency": payout.get("currency", "usd"),
+                "destination": stripe_account_id,
+                "transfer_group": payout["contract_id"],
+                "metadata[payout_id]": payout["id"],
+                "metadata[milestone_id]": payout["milestone_id"],
+            },
+            # Attempt-scoped key: dedupes redeliveries of one attempt while
+            # still letting an admin retry after a failure.
+            idempotency_key=f"payout-{payout['id']}-{attempt}",
+        )
+        update = {
+            "status": "paid",
+            "stripe_transfer_id": tr.get("id"),
+            "error": None,
+            "attempts": attempt,
+            "paid_at": _now(),
+            "updated_at": _now(),
+        }
+        log.info("payout %s paid via transfer %s", payout["id"], tr.get("id"))
+        await _notify(
+            payout["expert_user_id"],
+            type="payout.paid",
+            title="Payout sent 💸",
+            body=f"${payout['net_amount']:,.2f} for “{payout.get('milestone_title') or 'a milestone'}” is on its way to your bank.",
+            href="/dashboard",
+            entity_id=payout["id"],
+            email_subject="Your WorkSoy payout is on its way",
+            email_html=(
+                f"<p>We just sent ${payout['net_amount']:,.2f} to your connected payout "
+                f"account for &ldquo;{payout.get('milestone_title') or 'a milestone'}&rdquo;.</p>"
+                f"<p>Depending on your bank, funds typically arrive within 2 business days.</p>"
+                f"<p><a href=\"{APP_BASE_URL}/dashboard\">View your earnings</a></p>"
+            ),
+        )
+    except (StripeApiError, httpx.HTTPError) as e:
+        update = {"status": "failed", "error": str(e), "attempts": attempt, "updated_at": _now()}
+        log.warning("payout %s transfer failed: %s", payout["id"], e)
+        await _notify_admins(
+            type="payout.failed",
+            title="Expert payout failed",
+            body=f"Transfer of ${payout['net_amount']:,.2f} for “{payout.get('milestone_title') or payout['milestone_id']}” failed: {e}",
+            href="/admin",
+        )
+    await db.payouts.update_one({"id": payout["id"]}, {"$set": update})
+    return {**payout, **update}
+
+
+async def _queue_payout_for_milestone(ms: dict, contract: dict) -> Optional[dict]:
+    """Create the payout record for a released milestone and pay it out
+    immediately when the expert's Stripe account is ready. Idempotent on
+    milestone_id so a double release never double-pays."""
+    gross = float(ms["amount"])
+    fee = round(gross * PLATFORM_FEE_RATE, 2)
+    doc = {
+        "id": f"po_{uuid.uuid4().hex[:10]}",
+        "milestone_id": ms["id"],
+        "contract_id": contract["id"],
+        "expert_user_id": contract["expert_user_id"],
+        "milestone_title": ms.get("title"),
+        "brief_title": contract.get("brief_title"),
+        "gross_amount": gross,
+        "platform_fee": fee,
+        "net_amount": round(gross - fee, 2),
+        "currency": "usd",
+        "status": "queued",
+        "stripe_transfer_id": None,
+        "error": None,
+        "attempts": 0,
+        "created_at": _now(),
+        "updated_at": _now(),
+        "paid_at": None,
+    }
+    try:
+        await db.payouts.insert_one(dict(doc))
+    except Exception:  # duplicate milestone_id → payout already queued/paid
+        return await db.payouts.find_one({"milestone_id": ms["id"]}, {"_id": 0})
+    udoc = await db.users.find_one(
+        {"user_id": contract["expert_user_id"]}, {"_id": 0, "stripe_account_id": 1}
+    )
+    acct_id = (udoc or {}).get("stripe_account_id")
+    if acct_id:
+        try:
+            acct = await _stripe_request("GET", f"/accounts/{acct_id}")
+        except (StripeApiError, httpx.HTTPError) as e:
+            # Leave it queued; the status-endpoint flush or an admin retry
+            # will pick it up once Stripe is reachable again.
+            log.warning("payout %s: account lookup failed, staying queued: %s", doc["id"], e)
+            return doc
+        if acct.get("payouts_enabled"):
+            return await _attempt_transfer(doc, acct_id)
+    await _notify(
+        contract["expert_user_id"],
+        type="payout.queued",
+        title="Set up payouts to receive your earnings",
+        body=f"${doc['net_amount']:,.2f} is waiting for you. Connect a payout account from your dashboard to receive it.",
+        href="/dashboard",
+        entity_id=doc["id"],
+        email_subject="Action needed — set up payouts to receive your earnings",
+        email_html=(
+            f"<p>A client just released ${doc['net_amount']:,.2f} to you for "
+            f"&ldquo;{doc.get('milestone_title') or 'a milestone'}&rdquo;.</p>"
+            f"<p>Connect a payout account to receive the funds.</p>"
+            f"<p><a href=\"{APP_BASE_URL}/dashboard\">Set up payouts</a></p>"
+        ),
+    )
+    return doc
+
+
+async def _flush_queued_payouts(expert_user_id: str, stripe_account_id: str, limit: int = 20) -> int:
+    """Pay out any queued payouts for an expert whose account just became
+    transfer-ready. Returns the number successfully paid."""
+    queued = await db.payouts.find(
+        {"expert_user_id": expert_user_id, "status": "queued"}, {"_id": 0}
+    ).sort("created_at", 1).to_list(length=limit)
+    paid = 0
+    for p in queued:
+        result = await _attempt_transfer(p, stripe_account_id)
+        if result.get("status") == "paid":
+            paid += 1
+    return paid
+
+
+@app.post("/api/me/payouts/onboard")
+async def start_payout_onboarding(user: User = Depends(get_current_user)):
+    """Create (or reuse) the expert's Stripe Express account and hand back a
+    hosted onboarding link."""
+    profile = await db.experts.find_one({"user_id": user.user_id}, {"_id": 0, "id": 1})
+    if not profile:
+        raise HTTPException(status_code=403, detail="Only experts can set up payouts")
+    udoc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "stripe_account_id": 1})
+    acct_id = (udoc or {}).get("stripe_account_id")
+    try:
+        if not acct_id:
+            acct = await _stripe_request(
+                "POST",
+                "/accounts",
+                {
+                    "type": "express",
+                    "email": user.email,
+                    "capabilities[transfers][requested]": "true",
+                    "metadata[user_id]": user.user_id,
+                },
+            )
+            acct_id = acct["id"]
+            await db.users.update_one(
+                {"user_id": user.user_id}, {"$set": {"stripe_account_id": acct_id}}
+            )
+        link = await _stripe_request(
+            "POST",
+            "/account_links",
+            {
+                "account": acct_id,
+                "refresh_url": f"{APP_BASE_URL}/dashboard?payouts=refresh",
+                "return_url": f"{APP_BASE_URL}/dashboard?payouts=return",
+                "type": "account_onboarding",
+            },
+        )
+    except StripeApiError as e:
+        log.warning("payout onboarding failed for %s: %s", user.user_id, e)
+        raise HTTPException(status_code=502, detail="Could not reach Stripe to start onboarding. Try again shortly.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach Stripe to start onboarding. Try again shortly.")
+    return {"url": link["url"]}
+
+
+@app.get("/api/me/payouts/status")
+async def my_payout_status(user: User = Depends(get_current_user)):
+    udoc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "stripe_account_id": 1})
+    acct_id = (udoc or {}).get("stripe_account_id")
+    queued = await db.payouts.aggregate([
+        {"$match": {"expert_user_id": user.user_id, "status": "queued"}},
+        {"$group": {"_id": None, "total": {"$sum": "$net_amount"}, "count": {"$sum": 1}}},
+    ]).to_list(length=1)
+    out = {
+        "connected": bool(acct_id),
+        "payouts_enabled": False,
+        "details_submitted": False,
+        "queued_count": int(queued[0]["count"]) if queued else 0,
+        "queued_net_amount": float(queued[0]["total"]) if queued else 0.0,
+    }
+    if acct_id:
+        try:
+            acct = await _stripe_request("GET", f"/accounts/{acct_id}")
+            out["payouts_enabled"] = bool(acct.get("payouts_enabled"))
+            out["details_submitted"] = bool(acct.get("details_submitted"))
+        except (StripeApiError, httpx.HTTPError) as e:
+            log.warning("payout status lookup failed for %s: %s", user.user_id, e)
+        # Self-healing: the moment the account can receive transfers, drain
+        # anything that queued up while the expert was onboarding.
+        if out["payouts_enabled"] and out["queued_count"] > 0:
+            flushed = await _flush_queued_payouts(user.user_id, acct_id)
+            out["queued_count"] -= flushed
+    return out
+
+
+@app.get("/api/me/payouts", response_model=List[Payout])
+async def my_payouts(user: User = Depends(get_current_user)):
+    docs = await db.payouts.find(
+        {"expert_user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(length=200)
+    return [Payout(**d) for d in docs]
+
+
+@app.get("/api/admin/payouts", response_model=List[Payout])
+async def admin_list_payouts(status: Optional[str] = None, user: User = Depends(require_admin)):
+    q = {"status": status} if status else {}
+    docs = await db.payouts.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    return [Payout(**d) for d in docs]
+
+
+@app.post("/api/admin/payouts/{payout_id}/retry", response_model=Payout)
+async def admin_retry_payout(payout_id: str, user: User = Depends(require_admin)):
+    p = await db.payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Payout not found")
+    if p["status"] == "paid":
+        raise HTTPException(status_code=400, detail="Payout already paid")
+    udoc = await db.users.find_one(
+        {"user_id": p["expert_user_id"]}, {"_id": 0, "stripe_account_id": 1}
+    )
+    acct_id = (udoc or {}).get("stripe_account_id")
+    if not acct_id:
+        raise HTTPException(status_code=400, detail="Expert has not connected a payout account yet")
+    result = await _attempt_transfer(p, acct_id)
+    return Payout(**result)
+
+
+# =========================================================================
 # Shortlists + Saved searches (client convenience)
 # =========================================================================
 class ShortlistIn(BaseModel):
@@ -3195,6 +3507,12 @@ async def _startup():
     await db.shortlists.create_index("user_id")
     await db.saved_searches.create_index("id", unique=True)
     await db.saved_searches.create_index("user_id")
+
+    # Expert payouts — one payout per milestone, ever.
+    await db.payouts.create_index("id", unique=True)
+    await db.payouts.create_index("milestone_id", unique=True)
+    await db.payouts.create_index("expert_user_id")
+    await db.payouts.create_index("status")
 
     # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})
