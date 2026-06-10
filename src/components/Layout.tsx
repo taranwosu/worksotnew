@@ -15,6 +15,7 @@ import { useSession, signOutUser } from "@/lib/auth-client";
 import { getMyVetting } from "@/lib/api";
 import { Container, LinkButton, Logotype, Tag } from "@/components/primitives";
 import { NotificationsBell } from "@/components/NotificationsBell";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -396,6 +397,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main>{children}</main>
 
       <Footer />
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
 }

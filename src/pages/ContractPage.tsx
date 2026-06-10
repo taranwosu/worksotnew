@@ -8,6 +8,7 @@ import {
   getPaymentStatus,
   submitMilestone,
   releaseMilestone,
+  completeContract,
   fileDispute,
   getContractDisputes,
   getContractReviews,
@@ -18,6 +19,7 @@ import {
   type Dispute,
 } from "@/lib/api";
 import { DisputeThread } from "@/components/DisputeThread";
+import { toast } from "sonner";
 import { Container, Eyebrow, Button, Tag, FieldTextarea, FieldLabel } from "@/components/primitives";
 
 export function ContractPage() {
@@ -39,6 +41,7 @@ export function ContractPage() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [openThread, setOpenThread] = useState<string | null>(null);
+  const [completing, setCompleting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -97,6 +100,8 @@ export function ContractPage() {
   const isExpert = session?.user._id === contract.expert_user_id;
   const funded = milestones.filter((m) => m.status === "funded" || m.status === "submitted" || m.status === "released").reduce((s, m) => s + m.amount, 0);
   const released = milestones.filter((m) => m.status === "released").reduce((s, m) => s + m.amount, 0);
+  const allReleased = milestones.length > 0 && milestones.every((m) => m.status === "released");
+  const canComplete = (isClient || isExpert) && allReleased && contract.status !== "completed";
 
   const handleFund = async (id: string) => {
     setCheckoutFor(id);
@@ -105,15 +110,34 @@ export function ContractPage() {
       window.location.href = url;
     } catch (err) {
       setCheckoutFor(null);
-      alert(err instanceof Error ? err.message : "Checkout failed");
+      toast.error(err instanceof Error ? err.message : "Checkout failed");
     }
   };
 
   const handleSubmit = async (id: string) => {
-    try { await submitMilestone(id); load(); } catch (e) { alert(String(e)); }
+    try { await submitMilestone(id); load(); } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to submit milestone"); }
   };
   const handleRelease = async (id: string) => {
-    try { await releaseMilestone(id); load(); } catch (e) { alert(String(e)); }
+    try {
+      await releaseMilestone(id);
+      toast.success("Funds released to expert");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to release funds");
+    }
+  };
+
+  const handleComplete = async () => {
+    setCompleting(true);
+    try {
+      await completeContract(contractId);
+      toast.success("Contract marked complete — you can now leave a review");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to complete contract");
+    } finally {
+      setCompleting(false);
+    }
   };
 
   const handleFileDispute = async (e: React.FormEvent) => {
@@ -126,7 +150,7 @@ export function ContractPage() {
       setDisputeReason("");
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to file dispute");
+      toast.error(err instanceof Error ? err.message : "Failed to file dispute");
     } finally {
       setDisputeSubmitting(false);
     }
@@ -141,7 +165,7 @@ export function ContractPage() {
       setReviewComment("");
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to submit review");
+      toast.error(err instanceof Error ? err.message : "Failed to submit review");
     } finally {
       setReviewSubmitting(false);
     }
@@ -296,6 +320,27 @@ export function ContractPage() {
             );
           })}
         </div>
+
+        {canComplete && (
+          <div className="mt-8 flex flex-col gap-3 rounded border border-sun/40 bg-sun/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-display text-[15px] font-semibold text-ink">All milestones released.</p>
+              <p className="mt-0.5 text-[13px] text-ink-60">
+                Close out this contract to unlock reviews for both parties.
+              </p>
+            </div>
+            <Button
+              data-testid="complete-contract"
+              tone="ink"
+              size="md"
+              onClick={handleComplete}
+              disabled={completing}
+              iconLeft={completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            >
+              {completing ? "Completing…" : "Complete contract"}
+            </Button>
+          </div>
+        )}
 
         <div className="mt-10 flex gap-3">
           <button onClick={() => navigate({ to: "/messages" })} className="inline-flex items-center gap-1.5 rounded border border-ink-20 bg-white px-4 py-2 text-[13px] font-semibold text-ink">

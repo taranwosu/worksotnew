@@ -32,6 +32,7 @@ import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { VettingPage } from "./pages/VettingPage";
 import { ProcessPage } from "./pages/ProcessPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -79,6 +80,7 @@ const routeTree = rootRoute.addChildren(routes);
 const router = createRouter({
   routeTree,
   history: createBrowserHistory(),
+  defaultNotFoundComponent: NotFoundPage,
 });
 
 declare module "@tanstack/react-router" {

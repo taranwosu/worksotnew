@@ -290,6 +290,9 @@ export async function listMyContracts() { return req<Contract[]>("/api/contracts
 export async function getContract(id: string) {
   return req<{ contract: Contract; milestones: Milestone[] }>(`/api/contracts/${id}`);
 }
+export async function completeContract(id: string) {
+  return req<{ ok: boolean; status: string }>(`/api/contracts/${id}/complete`, { method: "POST" });
+}
 export async function createMilestoneCheckout(milestoneId: string) {
   return req<{ url: string; session_id: string }>("/api/payments/checkout/milestone", {
     method: "POST",

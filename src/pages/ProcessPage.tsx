@@ -307,8 +307,8 @@ function FunnelSection({ stats, loading }: { stats: ProcessStats | null; loading
                 >
                   <div className="flex items-center gap-2.5">
                     <span className="font-mono text-[10.5px] tabular text-ink-40">{String(idx).padStart(2, "0")}</span>
-                    <Icon className={cn("h-4 w-4 shrink-0", row.dim ? "text-ink-40" : "text-ink")} strokeWidth={1.6} />
-                    <span className={cn("font-display text-[13.5px] font-semibold", row.dim ? "text-ink-60" : "text-ink")}>{row.label}</span>
+                    <Icon className={cn("h-4 w-4 shrink-0", "dim" in row && row.dim ? "text-ink-40" : "text-ink")} strokeWidth={1.6} />
+                    <span className={cn("font-display text-[13.5px] font-semibold", "dim" in row && row.dim ? "text-ink-60" : "text-ink")}>{row.label}</span>
                   </div>
                   <div className="relative h-3 overflow-hidden rounded-full bg-cream-3">
                     <div
@@ -370,12 +370,6 @@ function StagesSection() {
                       <span className="text-ink-40">Time · </span>
                       <span className="text-ink">{s.duration}</span>
                     </p>
-                    {s.pass_rate && (
-                      <p className="font-mono text-[11px] text-ink-60">
-                        <span className="text-ink-40">Pass rate · </span>
-                        <span className="text-ink">{s.pass_rate}</span>
-                      </p>
-                    )}
                   </div>
                 </div>
 

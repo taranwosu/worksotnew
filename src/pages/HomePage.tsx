@@ -80,11 +80,13 @@ const logos = [
   "Figma", "Linear", "Pilot", "Scale", "Retool",
 ];
 
+// Aspirational statement of the WorkSoy operating standard — intentionally NOT
+// attributed to a customer. We don't publish fabricated testimonials; real
+// client reviews surface on expert profiles once contracts complete.
 const testimonial = {
   quote:
-    "We briefed WorkSoy on a Tuesday. Three shortlists, a working-session with the finalist, and a signed SOW by Friday. The closest agency process took six weeks and twice the cost.",
-  author: "Priya Raman",
-  role: "COO, Northwind Labs (Series B, $42M ARR)",
+    "Brief on Monday. Three shortlists and a working session by Wednesday. A signed SOW by Friday — at a fraction of the time and cost a typical agency process takes.",
+  label: "The WorkSoy standard",
 };
 
 const workflow = [
@@ -513,14 +515,9 @@ export function HomePage() {
                 </p>
                 <footer className="mt-8 flex items-center gap-4">
                   <span className="h-px w-10 bg-sun" aria-hidden />
-                  <div>
-                    <p className="font-display text-base font-semibold text-cream">
-                      {testimonial.author}
-                    </p>
-                    <p className="text-[13px] text-cream/60">
-                      {testimonial.role}
-                    </p>
-                  </div>
+                  <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-cream/60">
+                    {testimonial.label}
+                  </p>
                 </footer>
               </blockquote>
             </div>

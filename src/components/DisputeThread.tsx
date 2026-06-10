@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { Button, Tag } from "@/components/primitives";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -30,6 +31,7 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [resolving, setResolving] = useState<null | "release" | "refund">(null);
+  const [resolveNote, setResolveNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -66,7 +68,7 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
       setMessages((p) => [...p, m]);
       setDraft("");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send");
+      toast.error(err instanceof Error ? err.message : "Failed to send");
     } finally {
       setSending(false);
     }
@@ -81,7 +83,7 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
       const m = await postDisputeMessage(disputeId, `📎 ${meta.filename}`, meta.id);
       setMessages((p) => [...p, m]);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -90,12 +92,15 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
 
   const handleResolve = async (action: "release" | "refund") => {
     if (!dispute) return;
-    const note = window.prompt(`Resolution note for ${action} (optional):`) ?? undefined;
     setResolving(action);
     try {
-      await adminResolveDispute(disputeId, action, note || undefined);
+      await adminResolveDispute(disputeId, action, resolveNote.trim() || undefined);
+      toast.success(action === "release" ? "Funds released to expert" : "Client refunded");
+      setResolveNote("");
       await load();
       onResolved?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to resolve dispute");
     } finally {
       setResolving(null);
     }
@@ -245,25 +250,40 @@ export function DisputeThread({ disputeId, onResolved, onDispute, theme = "cream
             </button>
           </form>
           {isAdmin && (
-            <div className={cn("flex gap-2 border-t px-4 py-3", darkMode ? "border-cream/10" : "border-ink-10")}>
-              <Button
-                tone="sun"
-                size="sm"
-                onClick={() => handleResolve("release")}
-                disabled={resolving !== null}
-                data-testid={`dispute-resolve-release`}
-              >
-                {resolving === "release" ? "Releasing…" : "Release to expert"}
-              </Button>
-              <Button
-                tone="outline"
-                size="sm"
-                onClick={() => handleResolve("refund")}
-                disabled={resolving !== null}
-                data-testid={`dispute-resolve-refund`}
-              >
-                {resolving === "refund" ? "Refunding…" : "Refund client"}
-              </Button>
+            <div className={cn("border-t px-4 py-3", darkMode ? "border-cream/10" : "border-ink-10")}>
+              <textarea
+                value={resolveNote}
+                onChange={(e) => setResolveNote(e.target.value)}
+                placeholder="Resolution note (optional) — shown to both parties"
+                rows={2}
+                data-testid="dispute-resolve-note"
+                className={cn(
+                  "w-full resize-none rounded border px-3 py-2 text-[13px] focus:outline-none",
+                  darkMode
+                    ? "border-cream/20 bg-ink-3 text-cream placeholder:text-cream/40 focus:border-cream"
+                    : "border-ink-20 bg-cream-2 text-ink placeholder:text-ink-40 focus:border-ink",
+                )}
+              />
+              <div className="mt-2 flex gap-2">
+                <Button
+                  tone="sun"
+                  size="sm"
+                  onClick={() => handleResolve("release")}
+                  disabled={resolving !== null}
+                  data-testid={`dispute-resolve-release`}
+                >
+                  {resolving === "release" ? "Releasing…" : "Release to expert"}
+                </Button>
+                <Button
+                  tone="outline"
+                  size="sm"
+                  onClick={() => handleResolve("refund")}
+                  disabled={resolving !== null}
+                  data-testid={`dispute-resolve-refund`}
+                >
+                  {resolving === "refund" ? "Refunding…" : "Refund client"}
+                </Button>
+              </div>
             </div>
           )}
         </div>
