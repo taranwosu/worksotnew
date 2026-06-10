@@ -14,3 +14,7 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Python
+__pycache__/
+*.pyc

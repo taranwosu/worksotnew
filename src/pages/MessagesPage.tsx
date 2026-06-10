@@ -4,6 +4,7 @@ import { Loader2, Send, Paperclip, FileText } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { listConversations, listMessages, sendMessage, uploadFile, fileDownloadUrl, type ConversationSummary, type Message } from "@/lib/api";
 import { Container, Eyebrow, Tag } from "@/components/primitives";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export function MessagesPage() {
@@ -50,6 +51,8 @@ export function MessagesPage() {
       const m = await sendMessage(activeId, draft.trim());
       setMsgs((prev) => [...prev, m]);
       setDraft("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send message");
     } finally {
       setSending(false);
     }
@@ -65,7 +68,7 @@ export function MessagesPage() {
       const m = await sendMessage(activeId, body, meta.id);
       setMsgs((prev) => [...prev, m]);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

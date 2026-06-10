@@ -147,7 +147,7 @@ function ApplicationCard({
           {a.skill_answers && (
             <Section title="Skill questionnaire">
               <Multi label="Case study" value={String(a.skill_answers.case_study)} />
-              {a.skill_answers.portfolio_url && <KV k="Portfolio" v={String(a.skill_answers.portfolio_url)} />}
+              {a.skill_answers.portfolio_url ? <KV k="Portfolio" v={String(a.skill_answers.portfolio_url)} /> : null}
               <Multi label="Methodology" value={String(a.skill_answers.methodology)} />
             </Section>
           )}

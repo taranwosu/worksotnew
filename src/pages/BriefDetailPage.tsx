@@ -12,6 +12,7 @@ import {
   type Proposal,
 } from "@/lib/api";
 import { track } from "@/lib/analytics";
+import { toast } from "sonner";
 import { Container, Eyebrow, Tag, Button, FieldInput, FieldLabel, FieldTextarea } from "@/components/primitives";
 
 export function BriefDetailPage() {
@@ -75,10 +76,16 @@ export function BriefDetailPage() {
       const c = await acceptProposal(id);
       track("proposal.accepted", { proposal_id: id, contract_id: c.id });
       navigate({ to: "/contracts/$contractId", params: { contractId: c.id } });
-    } catch (err) { alert(err instanceof Error ? err.message : "Failed"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to accept proposal"); }
   };
   const handleReject = async (id: string) => {
-    try { await rejectProposal(id); load(); } catch (err) { alert(String(err)); }
+    try {
+      await rejectProposal(id);
+      toast.success("Proposal rejected");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reject proposal");
+    }
   };
 
   return (

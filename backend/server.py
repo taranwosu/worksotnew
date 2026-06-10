@@ -53,12 +53,61 @@ CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 UPLOADS_DIR = _Path(os.environ.get("UPLOADS_DIR", "/app/backend/uploads"))
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB
+# Upload allowlist — business documents, images, archives and design files.
+# Anything else (executables, scripts, raw binaries) is rejected to limit the
+# malware surface. Keyed on file extension since clients can spoof MIME types.
+ALLOWED_UPLOAD_EXTENSIONS = {
+    # Documents
+    ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
+    ".csv", ".txt", ".md", ".rtf", ".odt", ".ods", ".odp", ".pages", ".key",
+    # Images
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".heic", ".svg",
+    # Archives
+    ".zip",
+    # Design
+    ".fig", ".sketch", ".xd", ".ai", ".psd",
+}
 # Public app URL used for links inside transactional emails (no trailing slash).
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://worksoy.com").rstrip("/")
 PASSWORD_RESET_TTL_MINUTES = int(os.environ.get("PASSWORD_RESET_TTL_MINUTES", "60"))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worksoy")
+
+# =========================================================================
+# Production hardening guards
+# =========================================================================
+_IS_PROD = ENVIRONMENT not in ("development", "dev", "local", "test")
+# Known weak/placeholder secrets that must never reach a real deployment.
+_WEAK_JWT_SECRETS = {
+    "replace-me-with-a-long-random-string",
+    "dev",
+    "development",
+    "secret",
+    "changeme",
+    "change-me",
+}
+_jwt_is_weak = JWT_SECRET in _WEAK_JWT_SECRETS or len(JWT_SECRET) < 32
+if _IS_PROD and _jwt_is_weak:
+    raise RuntimeError(
+        "JWT_SECRET is a placeholder or too short for a non-development "
+        "environment. Generate a strong value with "
+        '`python -c "import secrets; print(secrets.token_urlsafe(48))"` '
+        "and set it before starting."
+    )
+if _jwt_is_weak:
+    log.warning("JWT_SECRET is weak/placeholder — acceptable for development only.")
+
+# Local-disk uploads are wiped when an ephemeral container restarts. Warn
+# loudly in production so operators mount a persistent volume (or point
+# UPLOADS_DIR at one) before real files are lost.
+if _IS_PROD and str(UPLOADS_DIR).startswith("/app"):
+    log.warning(
+        "UPLOADS_DIR=%s is on the ephemeral container filesystem; uploaded "
+        "files will be LOST on container restart. Mount a persistent volume "
+        "and point UPLOADS_DIR at it.",
+        UPLOADS_DIR,
+    )
 
 # Opt-in Sentry. The `sentry-sdk` package is intentionally not in
 # requirements.txt; install it in the deployment image when SENTRY_DSN is set.
@@ -168,6 +217,10 @@ def _extract_token(request: Request) -> Optional[str]:
 # =========================================================================
 AUTH_RL_MAX = int(os.environ.get("AUTH_RATE_LIMIT_MAX_ATTEMPTS", "5"))
 AUTH_RL_WINDOW = int(os.environ.get("AUTH_RATE_LIMIT_WINDOW_SECONDS", "900"))
+# Message-send limiter — separate, more generous bucket so normal chatting is
+# never throttled but bulk spam is. Keyed per-user (see send endpoints).
+MSG_RL_MAX = int(os.environ.get("MESSAGE_RATE_LIMIT_MAX", "30"))
+MSG_RL_WINDOW = int(os.environ.get("MESSAGE_RATE_LIMIT_WINDOW_SECONDS", "60"))
 _auth_attempts: dict[str, tuple[int, float]] = {}
 
 
@@ -178,17 +231,29 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _rate_limit(request: Request, bucket: str) -> None:
-    """Raise 429 if the caller has exceeded AUTH_RL_MAX in the current window."""
+def _rate_limit(
+    request: Request,
+    bucket: str,
+    *,
+    max_attempts: Optional[int] = None,
+    window: Optional[int] = None,
+) -> None:
+    """Raise 429 if the caller has exceeded the bucket limit in the window.
+
+    Defaults to the auth limit; pass max_attempts/window to override (e.g. the
+    more generous message-send bucket).
+    """
+    max_attempts = AUTH_RL_MAX if max_attempts is None else max_attempts
+    window = AUTH_RL_WINDOW if window is None else window
     key = f"{bucket}:{_client_ip(request)}"
     now = _now().timestamp()
     count, window_start = _auth_attempts.get(key, (0, now))
-    if now - window_start > AUTH_RL_WINDOW:
+    if now - window_start > window:
         count, window_start = 0, now
     count += 1
     _auth_attempts[key] = (count, window_start)
-    if count > AUTH_RL_MAX:
-        retry_after = int(AUTH_RL_WINDOW - (now - window_start))
+    if count > max_attempts:
+        retry_after = int(window - (now - window_start))
         raise HTTPException(
             status_code=429,
             detail="Too many attempts. Please try again later.",
@@ -419,6 +484,29 @@ async def get_current_user(request: Request) -> User:
     return User(**udoc)
 
 
+async def _resolve_user_optional(request: Request) -> Optional[User]:
+    """Like get_current_user but returns None instead of raising on missing/invalid
+    session. Lets public-facing checks (e.g. /api/auth/me) respond 200 with a null
+    body rather than a 401 that floods the browser console on every public page."""
+    token = _extract_token(request)
+    if not token:
+        return None
+    sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not sess:
+        return None
+    exp = sess["expires_at"]
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < _now():
+        return None
+    udoc = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0, "password_hash": 0})
+    if not udoc:
+        return None
+    return User(**udoc)
+
+
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -533,8 +621,12 @@ async def google_session(payload: GoogleSessionIn, request: Request, response: R
 
 
 @app.get("/api/auth/me")
-async def me(user: User = Depends(get_current_user)):
-    return user.model_dump()
+async def me(request: Request):
+    # Returns the user when authenticated, or null (200) when not. Returning a
+    # 200 here — instead of 401 — keeps the browser console clean on public
+    # pages where an anonymous visitor has no session cookie.
+    user = await _resolve_user_optional(request)
+    return user.model_dump() if user else None
 
 
 @app.post("/api/auth/logout")
@@ -1034,6 +1126,40 @@ async def get_contract(contract_id: str, user: User = Depends(get_current_user))
     return {"contract": Contract(**c).model_dump(), "milestones": [Milestone(**m).model_dump() for m in ms]}
 
 
+@app.post("/api/contracts/{contract_id}/complete")
+async def complete_contract(contract_id: str, user: User = Depends(get_current_user)):
+    """Manual completion fallback. Auto-completion runs on the final milestone
+    release, but this lets either party close out a contract whose milestones
+    are all released should the auto-detect ever miss — which also unlocks
+    reviews. Idempotent: completing an already-completed contract is a no-op."""
+    c = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    if user.user_id not in (c["client_user_id"], c["expert_user_id"]) and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not a party to this contract")
+    if c["status"] == "completed":
+        return {"ok": True, "status": "completed"}
+    remaining = await db.milestones.count_documents(
+        {"contract_id": contract_id, "status": {"$ne": "released"}}
+    )
+    if remaining > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="All milestones must be released before completing the contract.",
+        )
+    await db.contracts.update_one({"id": contract_id}, {"$set": {"status": "completed"}})
+    for uid in (c["client_user_id"], c["expert_user_id"]):
+        await _notify(
+            uid,
+            type="contract.completed",
+            title="Contract complete — leave a review",
+            body=f"“{c['brief_title']}” has been fully delivered. Share your experience.",
+            href=f"/contracts/{contract_id}",
+            entity_id=contract_id,
+        )
+    return {"ok": True, "status": "completed"}
+
+
 @app.post("/api/payments/checkout/milestone")
 async def create_milestone_checkout(payload: CheckoutIn, request: Request, user: User = Depends(get_current_user)):
     ms = await db.milestones.find_one({"id": payload.milestone_id}, {"_id": 0})
@@ -1339,7 +1465,8 @@ async def get_messages(conv_id: str, user: User = Depends(get_current_user)):
 
 
 @app.post("/api/conversations/{conv_id}/messages", response_model=MessageOut)
-async def send_message(conv_id: str, payload: MessageIn, user: User = Depends(get_current_user)):
+async def send_message(conv_id: str, payload: MessageIn, request: Request, user: User = Depends(get_current_user)):
+    _rate_limit(request, f"msg:{user.user_id}", max_attempts=MSG_RL_MAX, window=MSG_RL_WINDOW)
     c = await db.conversations.find_one({"id": conv_id}, {"_id": 0})
     if not c or user.user_id not in c["participants"]:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -1574,6 +1701,17 @@ async def upload_file(
     user: User = Depends(get_current_user),
 ):
     await _authorize_file_scope(user, conversation_id, contract_id, milestone_id, dispute_id)
+    # Content-type / extension allowlist — reject anything that isn't a known
+    # document, image, archive or design file before writing it to disk.
+    ext = _Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                "Unsupported file type. Allowed: documents, images, archives "
+                "and design files (e.g. PDF, DOCX, XLSX, PNG, JPG, ZIP, FIG)."
+            ),
+        )
     fid = f"fil_{uuid.uuid4().hex[:10]}"
     safe_name = (file.filename or "upload").replace("/", "_")[:120]
     # Preserve extension if present
@@ -1844,8 +1982,10 @@ async def get_dispute_messages(dispute_id: str, user: User = Depends(get_current
 async def post_dispute_message(
     dispute_id: str,
     payload: DisputeMessageIn,
+    request: Request,
     user: User = Depends(get_current_user),
 ):
+    _rate_limit(request, f"msg:{user.user_id}", max_attempts=MSG_RL_MAX, window=MSG_RL_WINDOW)
     d, c, role = await _dispute_access(user, dispute_id)
     file_meta: dict = {}
     if payload.file_id:

@@ -276,7 +276,7 @@ class TestFileUpload:
             f"{BASE_URL}/api/files/upload",
             headers=_auth(client_token),
             data={"conversation_id": conv_id},
-            files={"file": ("attach.bin", b"1234567890", "application/octet-stream")},
+            files={"file": ("attach.pdf", b"1234567890", "application/pdf")},
             timeout=30,
         )
         assert r.status_code == 200
@@ -290,7 +290,7 @@ class TestFileUpload:
         assert m.status_code == 200, m.text
         out = m.json()
         assert out.get("file_id") == fid
-        assert out.get("file_name") == "attach.bin"
+        assert out.get("file_name") == "attach.pdf"
         assert out.get("file_size") == 10
 
         # Invalid file_id → 400
@@ -307,7 +307,7 @@ class TestFileUpload:
             f"{BASE_URL}/api/files/upload",
             headers=_auth(client_token),
             data={"contract_id": contract_ctx["contract_id"]},
-            files={"file": ("big.bin", big, "application/octet-stream")},
+            files={"file": ("big.pdf", big, "application/pdf")},
             timeout=120,
         )
         assert r.status_code == 413, f"expected 413, got {r.status_code}: {r.text[:200]}"
