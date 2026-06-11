@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration-6 full regression of merged codebase + verification of new managed funnel (managed-services lead form, managed-talent pool apply, admin Leads tab, admin Managed→Pool applications, admin bell+email notifications). Wrote 11 new pytest cases in /app/backend/tests/test_managed_funnel.py — ALL 11 PASS. Re-ran legacy regression suites (backend_test.py, test_worksoy_flows.py, test_worksoy_iter3.py, test_worksoy_payouts.py, test_managed_service.py): 67 passed, 6 failed, 15 errored. Every failure traced to STALE test data assumptions / hardcoded credentials / outdated URL paths — NOT to backend regressions (see action_items). Performed comprehensive Playwright UI tests against the live preview URL: managed-services hero+lead form submits + success card; managed-talent two-ways-in panel for signed-out, apply form → pending card for signed-in; all 8 admin tabs render (vetting/managed/leads/queue/all/briefs/disputes/payouts); Leads tab filter chips show unhandled counts, mark-handled drops the count, mailto reply link present; Managed→Pool sub-tab shows pool-applications-section with pending apps and Mark reviewed / Dismiss buttons. Admin notifications: managed.lead and managed.pool_application created for admin user on POST /api/contact (topic=managed) and POST /api/pool/apply respectively; general topic does NOT create notifications. Duplicate pool apply returns 400.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/* rate limiter", "issue": "5-attempts-per-15min in-memory IP bucket means heavy parallel pytest runs hit 429; documented but a per-user backoff or test-mode bypass would make CI more reliable"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_managed_funnel.py",
+    "/app/test_reports/pytest/managed_funnel.xml",
+    "/app/test_reports/pytest/iter6_regression.xml"
+  ],
+  "action_items": [
+    "STALE TESTS — update or rewrite (NOT product bugs): (1) backend/tests/backend_test.py expects exactly 25 experts with Engineering=5 and Accounting&Tax=5, but seed now yields 24 experts (Engineering=7, Accounting&Tax=2) and no specialties contain literal 'tax' → test_search_q_tax returns 0. (2) backend/tests/test_worksoy_payouts.py uses path '/api/payouts/status' but real route is '/api/me/payouts/status' → 404. (3) backend/tests/test_managed_service.py uses hardcoded 'Passw0rd!' for managed_client@worksoy.com which no longer exists post branch-reset → 401. None of these reflect backend regressions; all 11 new iteration-6 tests and the managed funnel pass cleanly.",
+    "OPTIONAL: tighten the in-memory auth rate limiter or expose a test-mode override so pytest CI runs that register ~10 users in a burst don't hit 429 (currently mitigated by `sudo supervisorctl restart backend`)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 4984 LOC (was 2679 at iteration-4) — split into routers/ urgently. Contact (~787), pool apply (~4641), admin managed pool (~3862), notifications fan-out (~2573) and managed-task lifecycle (~4400-4900) are clean module boundaries.",
+    "_notify_admins fan-out (server.py:2573) loops admin users and inserts one notification per admin + sends one email per admin. For >5 admins this is N writes + N emails per event — consider single broadcast doc with admin recipient array, or batch insert_many.",
+    "POST /api/contact (server.py:787) does NOT validate payload.topic against an allow-list — any string is stored. Add Literal['managed','general','support','partnership'] on the Pydantic model so the admin Leads tab filter chips can't be bypassed.",
+    "POST /api/pool/apply (server.py:4641) blocks duplicate pending apps but allows multiple non-pending re-applies in quick succession with no rate limit — easy spam vector. Add _rate_limit(request, 'pool_apply') as done on /api/contact.",
+    "Frontend ManagedTalentPage stores session in `worksoy.session_token` AND `worksoy_session_token` — at least one of them is dead code; one source of truth would prevent future auth-state desync.",
+    "Vite HMR WebSocket fails through the preview proxy (wss handshake 429 then localhost SSL error) — harmless in prod, but generates console noise that can mask real errors; consider disabling HMR ws when behind the preview proxy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_managed_funnel.py"
+  ],
+  "success_rate": {
+    "backend": "100% on iteration-6 surface (11/11 new managed-funnel tests); 67/88 on legacy suites — all 21 non-passes are stale-test issues, not regressions",
+    "frontend": "100% on managed funnel + admin tabs + core pages"
+  },
+  "test_credentials": "admin@worksoy.com / WorkSoy!Admin2026 (verified working). Pool test users pooltest1@/pooltest2@/pooltest3@worksoy.com / Passw0rd!2026 (verified — pooltest3 visible in Admin→Managed→Pool). Fresh expert/client users created per test run via /api/auth/register (rate-limited 5/15min).",
+  "seed_data_creation": "Per run: 1 managed lead contact_submission, 1 general contact_submission, 1 expert user + 1 pool_application (status: pending→reviewed). UI test also created 1 managed lead via the live form and 1 pool application via the apply form on /managed-talent. All test rows are prefixed TEST_ and survive across runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_managed_funnel.py -v` for iteration-6 (11 cases, all green) — this is the canonical regression for the new managed funnel and admin notification fan-out. Legacy suites need refactor before they can be re-enabled: (a) backend_test.py — relax hardcoded counts/category assertions or update to current seed snapshot; (b) test_worksoy_payouts.py — fix path to /api/me/payouts/*; (c) test_managed_service.py — replace hardcoded managed_client@worksoy.com credentials with register-or-login pattern (like test_managed_funnel.py does). Backend rate limiter is on a 15-min window — if you see 429s in pytest, `sudo supervisorctl restart backend` clears it. Frontend session_token localStorage key is `worksoy.session_token` (the manual UI flow worked when setting both worksoy.session_token and worksoy_session_token). New endpoints surface: POST /api/contact (topic='managed' → admin notification), POST /api/pool/apply (→ admin notification), GET /api/pool/my-application, GET/POST /api/admin/managed/pool/applications[/{id}/status], GET /api/admin/contact-submissions, POST /api/admin/contact-submissions/{id}/handled.",
+  "rca_of_the_issue": "n/a — no product bugs found this iteration. All managed funnel features (frontend + backend + admin notifications) work end-to-end. Legacy test failures are documented as stale-test refactor work in action_items; they do not block the merge."
+}
