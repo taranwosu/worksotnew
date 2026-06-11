@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PlusCircle, Trash2, Edit3, Eye, Sparkles, Save, X, Clock,
-  CheckCircle2, AlertCircle, Mail, MessageSquare,
+  CheckCircle2, AlertCircle, Mail, Upload,
 } from "lucide-react";
 import {
   adminListBlogPosts,
@@ -13,6 +13,7 @@ import {
   adminDeleteComment,
   adminListSubscribers,
   adminBlogAi,
+  adminUploadCover,
   type BlogPost,
   type BlogPostInput,
 } from "@/lib/blog";
@@ -298,6 +299,29 @@ function PostEditor({ initial, onClose }: { initial: BlogPost | null; onClose: (
   const [kwInput, setKwInput] = useState((initial?.keywords ?? []).join(", "));
   const [saving, setSaving] = useState(false);
   const [aiMode, setAiMode] = useState<null | "meta" | "summary" | "faq" | "keywords">(null);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const coverFileRef = useRef<HTMLInputElement>(null);
+
+  const onCoverUpload = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
+    setCoverUploading(true);
+    try {
+      const r = await adminUploadCover(file);
+      // Store the absolute URL so the public site can render it without
+      // needing to resolve against the API base.
+      const base = (import.meta.env.VITE_BACKEND_URL as string) ?? "";
+      setDraft((d) => ({ ...d, cover_image: `${base}${r.url}` }));
+      toast.success("Cover image uploaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setCoverUploading(false);
+    }
+  };
 
   const save = async (publish?: boolean) => {
     if (!draft.title.trim()) {
@@ -454,13 +478,56 @@ function PostEditor({ initial, onClose }: { initial: BlogPost | null; onClose: (
               placeholder="auto-from-title"
               className="mt-1 w-full rounded border border-cream/20 bg-cream/5 px-3 py-1.5 font-mono text-[12px] text-cream focus:border-sun focus:outline-none"
             />
-            <label className="eyebrow mt-3 block text-cream/50">Cover image URL</label>
+            <label className="eyebrow mt-3 block text-cream/50">Cover image</label>
+            {draft.cover_image ? (
+              <div className="mt-1 overflow-hidden rounded border border-cream/20 bg-cream/5">
+                <img
+                  src={draft.cover_image}
+                  alt="Cover"
+                  className="block aspect-[16/9] w-full object-cover"
+                />
+                <div className="flex items-center justify-between gap-2 border-t border-cream/10 px-2 py-1.5">
+                  <span className="truncate font-mono text-[10px] text-cream/40">
+                    {draft.cover_image.length > 48
+                      ? draft.cover_image.slice(0, 24) + "…" + draft.cover_image.slice(-20)
+                      : draft.cover_image}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="admin-blog-cover-remove"
+                    onClick={() => setDraft({ ...draft, cover_image: "" })}
+                    className="rounded border border-cream/20 px-2 py-0.5 text-[10px] text-cream/70 hover:bg-cream/10"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="admin-blog-cover-upload-btn"
+                onClick={() => coverFileRef.current?.click()}
+                disabled={coverUploading}
+                className="mt-1 flex w-full items-center justify-center gap-2 rounded border border-dashed border-cream/20 bg-cream/5 px-3 py-6 text-[12px] text-cream/60 hover:border-sun hover:bg-cream/10 disabled:opacity-60"
+              >
+                {coverUploading ? <Clock className="h-4 w-4 animate-pulse" /> : <Upload className="h-4 w-4" />}
+                {coverUploading ? "Uploading…" : "Drop or click to upload"}
+              </button>
+            )}
+            <input
+              ref={coverFileRef}
+              type="file"
+              accept="image/*"
+              data-testid="admin-blog-cover-file"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onCoverUpload(f); e.target.value = ""; }}
+            />
             <input
               data-testid="admin-blog-cover"
               value={draft.cover_image ?? ""}
               onChange={(e) => setDraft({ ...draft, cover_image: e.target.value })}
-              placeholder="https://…"
-              className="mt-1 w-full rounded border border-cream/20 bg-cream/5 px-3 py-1.5 font-mono text-[12px] text-cream focus:border-sun focus:outline-none"
+              placeholder="or paste a URL"
+              className="mt-2 w-full rounded border border-cream/20 bg-cream/5 px-3 py-1.5 font-mono text-[11px] text-cream focus:border-sun focus:outline-none"
             />
             <label className="eyebrow mt-3 block text-cream/50">Category</label>
             <input

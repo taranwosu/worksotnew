@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration-9 verified end-to-end. Backend: 12/12 new iter-9 cases pass except 1 (cover-image asset Cache-Control header is overridden by a global no-store middleware — the FileResponse explicitly sets 'public, max-age=604800, immutable' but the response actually returns 'no-store, no-cache, must-revalidate'). All 41 iter-7 + iter-8 regression cases also pass with a single flaky 429 on the auth-bucket-independence test (caused by accumulated auth rate-limit from repeated test logins, not a real regression — retry after cooldown). Verified post-increment view_count (two different X-Forwarded-For IPs → v2 == v1+1; same IP twice → no double-inc); PATCH partial payload behaviour (tldr-only patch preserves title/content/status; {} returns 200 no-op; invalid FaqItem still 422); cover upload auth gate (401 without session), .exe → 415, 9MB PNG → 413, missing fid → 404, regex guard rejects non-blogimg_ slugs; RSS 2.0 feed valid with <atom:link rel=self>, RFC-822 pubDate, dc:creator, category, channel title 'WorkSoy Journal' and every published slug present. Frontend: /blog renders data-testid='blog-rss-link' (href correct to backend URL) and reading-progress-bar + blog-toc are present on /blog/:slug. ToC for the seeded 3% Lie post lists all 5 stages with data-testid='toc-stage-1-language-personality'..'toc-stage-5-decision' as expected. <link rel=alternate type=application/rss+xml> is injected on /blog AND /blog/:slug — but its href is hard-coded to 'https://worksoy.com/api/blog/rss.xml' (production domain) instead of being derived from VITE_BACKEND_URL, which is the wrong URL for the preview env. Admin cover-upload UI click-flow could not be exercised end-to-end because auth rate-limit (429 'Too many attempts') from accumulated suite logins blocked the UI login during this run; however, all four required data-testid attributes (admin-blog-cover-upload-btn / admin-blog-cover-file / admin-blog-cover / admin-blog-cover-remove) are present in /app/src/components/AdminBlogTab.tsx and the backend upload endpoint is fully working per pytest, so the integration is structurally sound.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/blog/assets/{fid}", "issue": "Handler sets Cache-Control 'public, max-age=604800, immutable' but the response actually returns 'no-store, no-cache, must-revalidate' — a global no-cache middleware is overriding the per-route header. Asset bytes serve correctly; only the cache directive is wrong. Exclude /api/blog/assets/* from the no-store middleware or add response.headers.update() after FileResponse construction."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BlogPage / BlogPostPage <link rel=alternate>", "issue": "Alternate RSS link href is hard-coded to 'https://worksoy.com/api/blog/rss.xml' instead of using VITE_BACKEND_URL/REACT_APP_BACKEND_URL. In preview / non-prod env the hint resolves to a non-existent host.", "selector": "link[rel='alternate'][type='application/rss+xml']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All public + admin pages", "issues": ["PRE-EXISTING (carried from iter-6/7/8): shipper-api-production-3b99.up.railway.app analytics calls throw 4-6 CORS errors per page load. No functional impact."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_blog_iter9.py",
+    "/app/test_reports/pytest/iter9_blog.xml",
+    "/app/test_reports/pytest/iter9_regression.xml"
+  ],
+  "action_items": [
+    "MINOR: Stop the global no-cache middleware from overriding /api/blog/assets/* response (per-path skip or response.headers update inside handler). Currently CDN/browsers will refuse to cache cover images, defeating the purpose of the immutable URL scheme.",
+    "MINOR: Replace the hard-coded 'https://worksoy.com' in the <link rel=alternate type=application/rss+xml> tags on /blog and /blog/:slug with VITE_BACKEND_URL (or import.meta.env.VITE_BACKEND_URL) so the hint works in preview/dev/staging envs.",
+    "INFO: The auth bucket throttle (login route) is aggressive — repeated full-suite runs against the same IP will eventually 429 the iter-8 'auth_login_independent_of_subscribe_bucket' test. Either raise the auth bucket limit, or have that test sleep before its terminal login attempt.",
+    "PRE-EXISTING (carry forward iter-6→8): Remove/proxy shipper-api railway analytics calls — every page load throws 4-6 CORS errors."
+  ],
+  "critical_code_review_comments": [
+    "BlogPostPatch model is correctly defined — every field Optional and applied via payload.model_dump(exclude_unset=True). PATCH handler now preserves untouched fields; partial PATCH (tldr-only, status-only, etc.) works.",
+    "Cover-upload regex (blogimg_[a-f0-9]{6,32}) is correctly path-traversal proof: '../etc/passwd' fails the regex and returns 404 before any glob runs. Good defense-in-depth.",
+    "Upload size cap is enforced by streaming reads (1 MB chunks); the partially-written file is unlink()ed on overflow. Solid.",
+    "RSS endpoint correctly emits xmlns:dc + xmlns:atom and RFC-822 pubDates. Channel <atom:link rel=self> present.",
+    "View-count post-increment is implemented in-memory (doc['view_count'] = previous + 1 right after $inc). Risk: under high concurrency the in-process value may diverge from the DB by ±1; acceptable for analytics surface.",
+    "FRONTEND: <link rel=alternate> uses a hardcoded production domain — should derive from VITE_BACKEND_URL.",
+    "FRONTEND: ToC client-side parsing via DOMParser is correct; only renders when 2+ headings (verified — non-stage posts don't get a ToC).",
+    "FRONTEND: Reading-progress bar saturates at 100% when document is shorter than viewport (short posts). Cosmetic only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_blog_iter9.py (NEW — 12 cases: 2 view-count, 3 PATCH, 6 cover upload, 1 RSS)"
+  ],
+  "success_rate": {
+    "backend": "98% (52/53 across iter-7+8+9; one failure = cover-asset Cache-Control header override by global no-store middleware; iter-8 newsletter-bucket-independence test flakes at 429 when run back-to-back due to auth bucket cooldown)",
+    "frontend": "90% — reading-progress bar, ToC (5 entries on the 3% Lie post, deep-link ids injected), RSS link in newsletter section, <link rel=alternate> all present and correct. The alternate href uses a hard-coded production domain (worksoy.com) instead of VITE_BACKEND_URL — works in prod, broken hint in preview. Admin cover-upload UI click-flow not exercised this run (auth rate-limited); data-testids and backend upload endpoint both verified independently."
+  },
+  "test_credentials": "admin@worksoy.com / WorkSoyAdmin2026! — verified working when auth bucket is cool.",
+  "seed_data_creation": "Per run: ~3 TEST_ posts (auto-deleted by created_ids teardown fixture), 2 cover image files left in /app/backend/uploads/blog/ (≤200 bytes each — safe to ignore or sweep periodically).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Canonical iter-9 regression: `pytest /app/backend/tests/test_blog.py /app/backend/tests/test_blog_iter8.py /app/backend/tests/test_blog_iter9.py -v` (53 cases total). The auth login bucket can blow at 429 — if so, sleep 120-180s and retry. Cover-image assets are served from /app/backend/uploads/blog/ and named 'blogimg_{12-hex}_{safe_filename}'. The asset Cache-Control header bug is a middleware-level override; FileResponse headers param is correct in code — main agent needs to whitelist /api/blog/assets/* in whatever no-store middleware exists in server.py. Frontend <link rel=alternate> uses a hard-coded worksoy.com domain — search/replace VITE_BACKEND_URL in BlogPage.tsx + BlogPostPage.tsx. ToC and reading-progress work as designed; on shorter posts the bar will saturate at 100% quickly (expected). View-count post-increment confirmed via two distinct X-Forwarded-For headers (use 198.51.100.X — TEST-NET-2 — to avoid colliding with real users).",
+  "rca of the issue": "Cache-Control: handler sets 'public, max-age=604800, immutable' via FileResponse(headers=...), but response actually returns 'no-store, no-cache, must-revalidate'. RCA: a global FastAPI/Starlette middleware in server.py is force-setting Cache-Control on every response, overriding per-route headers. Mitigation: add a path-prefix check in the middleware to skip /api/blog/assets/, OR set the header from the route handler AFTER FileResponse construction (response.headers['Cache-Control'] = ...) which usually wins over middleware that runs on the request side. Alternate <link rel=alternate>: BlogPage.tsx/BlogPostPage.tsx hard-code 'https://worksoy.com/api/blog/rss.xml' instead of `${import.meta.env.VITE_BACKEND_URL}/api/blog/rss.xml`."
+}

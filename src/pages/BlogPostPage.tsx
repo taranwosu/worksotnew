@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useNavigate } from "@tanstack/react-router";
-import { Clock, ArrowLeft, MessageSquare, Share2, Sparkles, ChevronRight, Star, ArrowUpRight } from "lucide-react";
+import { Clock, ArrowLeft, MessageSquare, Share2, Sparkles, ChevronRight, Star, ArrowUpRight, List } from "lucide-react";
 import { getBlogPost, postBlogComment, getRelatedExperts, type BlogPostDetail, type RelatedExpert } from "@/lib/blog";
 import { usePageMeta } from "@/lib/seo";
 import { Container, Eyebrow, Tag, Reveal } from "@/components/primitives";
@@ -12,6 +12,45 @@ function formatDate(iso?: string | null) {
 }
 
 const ORIGIN = "https://worksoy.com";
+
+function slugifyHeading(text: string, used: Set<string>): string {
+  const base = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "section";
+  let s = base;
+  let n = 2;
+  while (used.has(s)) { s = `${base}-${n++}`; }
+  used.add(s);
+  return s;
+}
+
+type TocEntry = { id: string; text: string; level: 2 | 3 };
+
+/**
+ * Parse the post HTML, inject id= attributes onto H2/H3 elements so the ToC
+ * can deep-link to them, and return both the rewritten HTML + the headings
+ * list. Pure client-side — no DOMParser side-effects on document.
+ */
+function buildToc(html: string): { html: string; toc: TocEntry[] } {
+  if (typeof window === "undefined" || !html) return { html, toc: [] };
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<root>${html}</root>`, "text/html");
+  const root = doc.body.querySelector("root") ?? doc.body;
+  const used = new Set<string>();
+  const toc: TocEntry[] = [];
+  root.querySelectorAll("h2, h3").forEach((h) => {
+    const text = h.textContent?.trim() || "";
+    if (!text) return;
+    const id = slugifyHeading(text, used);
+    h.setAttribute("id", id);
+    toc.push({ id, text, level: h.tagName === "H2" ? 2 : 3 });
+  });
+  return { html: root.innerHTML, toc };
+}
 
 function injectJsonLd(post: BlogPostDetail["post"]) {
   // BlogPosting + BreadcrumbList + Organization + optional FAQPage
@@ -78,6 +117,16 @@ export function BlogPostPage() {
   const [cBody, setCBody] = useState("");
   const [posting, setPosting] = useState(false);
 
+  // Reading progress bar — clamped to the article body via ref.
+  const articleRef = useRef<HTMLDivElement>(null);
+  const [progress, setProgress] = useState(0);
+
+  // Build the ToC + rewrite HTML to embed heading ids (memoised on post change).
+  const { html: bodyHtml, toc } = useMemo(
+    () => (data ? buildToc(data.post.content_html) : { html: "", toc: [] as TocEntry[] }),
+    [data?.post.id, data?.post.content_html], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -113,6 +162,46 @@ export function BlogPostPage() {
     }
     return () => { for (const s of created) s.remove(); };
   }, [data]);
+
+  // Reading progress — tracked against the article body bounding box.
+  useEffect(() => {
+    if (!data) return;
+    let raf = 0;
+    const compute = () => {
+      const el = articleRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      if (total <= 0) { setProgress(0); return; }
+      const scrolled = Math.min(Math.max(-rect.top, 0), total);
+      setProgress(scrolled / total);
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => { raf = 0; compute(); });
+    };
+    compute();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [data]);
+
+  // Inject an <link rel="alternate" type="application/rss+xml"> tag so
+  // browsers + AI agents discover the feed from any post page.
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "alternate";
+    link.type = "application/rss+xml";
+    link.title = "WorkSoy Journal RSS";
+    link.href = `${ORIGIN}/api/blog/rss.xml`;
+    link.dataset.blogRss = "1";
+    document.head.appendChild(link);
+    return () => { link.remove(); };
+  }, []);
 
   const onCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,6 +282,18 @@ export function BlogPostPage() {
 
   return (
     <main className="bg-cream">
+      {/* Reading progress bar — fixed at top */}
+      <div
+        aria-hidden
+        data-testid="reading-progress-bar"
+        className="pointer-events-none fixed left-0 right-0 top-0 z-50 h-[3px] bg-transparent"
+      >
+        <div
+          className="h-full bg-sun transition-[width] duration-100 ease-out"
+          style={{ width: `${Math.round(progress * 100)}%` }}
+        />
+      </div>
+
       {/* Breadcrumb / back */}
       <Container className="pt-8 text-[13px] text-ink-60">
         <nav className="flex items-center gap-2" aria-label="Breadcrumb">
@@ -205,7 +306,7 @@ export function BlogPostPage() {
       </Container>
 
       {/* Article header */}
-      <article>
+      <article ref={articleRef}>
         <header className="pb-10 pt-10">
           <Container>
             <div className="mx-auto max-w-3xl">
@@ -263,28 +364,68 @@ export function BlogPostPage() {
           </Container>
         )}
 
-        {/* Body */}
+        {/* Body + sticky ToC sidebar */}
         <Container className="pb-16">
-          <div
-            className="prose-blog mx-auto max-w-3xl"
-            data-testid="blog-post-content"
-            dangerouslySetInnerHTML={{ __html: post.content_html }}
-          />
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1fr_minmax(0,720px)_220px]">
+            {/* Left spacer (keeps body visually centered on lg+) */}
+            <div className="hidden lg:block" />
 
-          {post.tags && post.tags.length > 0 && (
-            <div className="mx-auto mt-10 flex max-w-3xl flex-wrap gap-2">
-              {post.tags.map((t) => (
-                <Link
-                  key={t}
-                  to="/blog"
-                  search={{} as never}
-                  className="rounded-pill border border-ink-20 bg-white px-3 py-1 text-[12px] text-ink hover:bg-cream-2"
-                >
-                  #{t}
-                </Link>
-              ))}
+            <div>
+              <div
+                className="prose-blog max-w-none"
+                data-testid="blog-post-content"
+                dangerouslySetInnerHTML={{ __html: bodyHtml || post.content_html }}
+              />
+
+              {post.tags && post.tags.length > 0 && (
+                <div className="mt-10 flex flex-wrap gap-2">
+                  {post.tags.map((t) => (
+                    <Link
+                      key={t}
+                      to="/blog"
+                      search={{} as never}
+                      className="rounded-pill border border-ink-20 bg-white px-3 py-1 text-[12px] text-ink hover:bg-cream-2"
+                    >
+                      #{t}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Sticky ToC — only when 2+ headings */}
+            {toc.length >= 2 ? (
+              <aside
+                data-testid="blog-toc"
+                className="hidden lg:block"
+                aria-label="Table of contents"
+              >
+                <div className="sticky top-24">
+                  <div className="eyebrow inline-flex items-center gap-2 text-ink-60">
+                    <List className="h-3 w-3" /> On this page
+                  </div>
+                  <ol className="mt-4 space-y-1 border-l border-ink-10">
+                    {toc.map((h) => (
+                      <li
+                        key={h.id}
+                        className={h.level === 3 ? "pl-7" : "pl-4"}
+                      >
+                        <a
+                          href={`#${h.id}`}
+                          data-testid={`toc-${h.id}`}
+                          className="block border-l border-transparent py-1 text-[12.5px] leading-snug text-ink-60 hover:border-ink hover:text-ink"
+                        >
+                          {h.text}
+                        </a>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </aside>
+            ) : (
+              <div className="hidden lg:block" />
+            )}
+          </div>
         </Container>
 
         {/* Related vetted expert — converts long-reads into marketplace funnel */}

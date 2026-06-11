@@ -156,3 +156,19 @@ export async function adminBlogAi(p: { title: string; content_html: string; mode
     body: JSON.stringify(p),
   });
 }
+
+export async function adminUploadCover(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/api/admin/blog/upload-cover`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!res.ok) {
+    let msg = `Upload failed (${res.status})`;
+    try { const b = await res.json(); if (b?.detail) msg = String(b.detail); } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return (await res.json()) as { id: string; url: string; size: number; content_type: string };
+}

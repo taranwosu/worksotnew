@@ -6,15 +6,26 @@ from `server.py` (no circular imports).
 """
 from __future__ import annotations
 
+import os
 import re
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Optional, List, Literal
 
 import bleach
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import PlainTextResponse, Response
+from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel, EmailStr, Field
+
+
+# =========================================================================
+# Cover-image upload (public read, admin write)
+# =========================================================================
+BLOG_ASSETS_DIR = Path(os.environ.get("BLOG_ASSETS_DIR", "/app/backend/uploads/blog"))
+BLOG_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAX_COVER_BYTES = 8 * 1024 * 1024  # 8 MB
 
 
 # =========================================================================
@@ -159,6 +170,25 @@ class BlogPostIn(BaseModel):
     keywords: List[str] = []
 
 
+class BlogPostPatch(BaseModel):
+    """Partial update — every field optional. Use `exclude_unset` on the
+    Pydantic dump to apply only what the client sent."""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=240)
+    slug: Optional[str] = None
+    excerpt: Optional[str] = Field(default=None, max_length=500)
+    content_html: Optional[str] = None
+    cover_image: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    status: Optional[Literal["draft", "published"]] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    canonical_url: Optional[str] = None
+    faq: Optional[List[FaqItem]] = None
+    tldr: Optional[str] = None
+    keywords: Optional[List[str]] = None
+
+
 class CommentIn(BaseModel):
     post_id: str
     author_name: str = Field(min_length=1, max_length=80)
@@ -245,6 +275,52 @@ def register_blog(
             slug = f"{base}-{n}"
             n += 1
 
+    # ---- Cover-image upload (admin write, public read) ----
+    @router.post("/api/admin/blog/upload-cover")
+    async def admin_upload_cover(
+        file: UploadFile = File(...),
+        _: Any = Depends(require_admin),
+    ):
+        ext = Path(file.filename or "").suffix.lower()
+        if ext not in ALLOWED_IMAGE_EXTS:
+            raise HTTPException(
+                415,
+                "Unsupported image type. Allowed: .png, .jpg, .jpeg, .webp, .gif",
+            )
+        fid = f"blogimg_{uuid.uuid4().hex[:12]}"
+        safe = (file.filename or "cover").replace("/", "_")[:80]
+        dest = BLOG_ASSETS_DIR / f"{fid}_{safe}"
+        size = 0
+        with dest.open("wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_COVER_BYTES:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(
+                        413, f"Cover image exceeds {MAX_COVER_BYTES // (1024*1024)} MB"
+                    )
+                out.write(chunk)
+        # Public, no-auth URL. Served below by /api/blog/assets/{fid}.
+        url = f"/api/blog/assets/{fid}"
+        return {"id": fid, "url": url, "size": size, "content_type": file.content_type}
+
+    @router.get("/api/blog/assets/{fid}")
+    async def blog_asset(fid: str):
+        if not re.fullmatch(r"blogimg_[a-f0-9]{6,32}", fid):
+            raise HTTPException(404, "Asset not found")
+        matches = list(BLOG_ASSETS_DIR.glob(f"{fid}_*"))
+        if not matches:
+            raise HTTPException(404, "Asset not found")
+        path = matches[0]
+        return FileResponse(
+            path,
+            headers={"Cache-Control": "public, max-age=604800, immutable"},
+        )
+
     # ---- Public ----
     @router.get("/api/blog/posts")
     async def blog_list(
@@ -294,6 +370,9 @@ def register_blog(
             await db.blog_posts.update_one(
                 {"id": doc["id"]}, {"$inc": {"view_count": 1}}
             )
+            # Reflect the post-increment value in the response so analytics
+            # consumers see the count this request contributed to.
+            doc["view_count"] = (doc.get("view_count", 0) or 0) + 1
         related_filter: dict = {"status": "published", "id": {"$ne": doc["id"]}}
         cat = doc.get("category")
         tags = doc.get("tags") or []
@@ -523,6 +602,70 @@ def register_blog(
             f"Sitemap: {APP_BASE_URL}/api/sitemap.xml\n"
         )
 
+    # ---- RSS feed (huge for distribution + AI ingestion) ----
+    @router.get("/api/blog/rss.xml")
+    async def blog_rss():
+        posts = await db.blog_posts.find(
+            {"status": "published"},
+            {"_id": 0, "content_html": 0},
+        ).sort("published_at", -1).limit(50).to_list(length=50)
+
+        def _xml_escape(s: str) -> str:
+            return (
+                (s or "")
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+                .replace("'", "&apos;")
+            )
+
+        def _rss_date(iso: Optional[str]) -> str:
+            """Convert ISO-8601 to RFC-822 (RSS spec)."""
+            if not iso:
+                return ""
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
+            except Exception:
+                return ""
+
+        items: list[str] = []
+        for p in posts:
+            url = f"{APP_BASE_URL}/blog/{p['slug']}"
+            pub_iso = p.get("published_at") or p.get("created_at")
+            items.append(
+                "<item>"
+                f"<title>{_xml_escape(p['title'])}</title>"
+                f"<link>{url}</link>"
+                f"<guid isPermaLink=\"true\">{url}</guid>"
+                f"<pubDate>{_rss_date(pub_iso)}</pubDate>"
+                f"<description>{_xml_escape(p.get('excerpt') or '')}</description>"
+                f"<dc:creator>{_xml_escape(p.get('author_name') or 'WorkSoy Editorial')}</dc:creator>"
+                + (f"<category>{_xml_escape(p['category'])}</category>" if p.get("category") else "")
+                + "</item>"
+            )
+
+        latest_iso = posts[0].get("published_at") or posts[0].get("created_at") if posts else None
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
+            "<channel>\n"
+            "<title>WorkSoy Journal</title>\n"
+            f"<link>{APP_BASE_URL}/blog</link>\n"
+            "<description>Field notes on hiring, vetting, and senior talent — from the WorkSoy network.</description>\n"
+            "<language>en-us</language>\n"
+            f"<lastBuildDate>{_rss_date(latest_iso) or _rss_date(_now().isoformat())}</lastBuildDate>\n"
+            f'<atom:link href="{APP_BASE_URL}/api/blog/rss.xml" rel="self" type="application/rss+xml" />\n'
+            + "\n".join(items)
+            + "\n</channel>\n</rss>\n"
+        )
+        return Response(content=xml, media_type="application/rss+xml")
+
     # ---- Admin CMS ----
     @router.get("/api/admin/blog/posts")
     async def admin_blog_list(admin=Depends(require_admin), status: Optional[str] = None):
@@ -571,34 +714,57 @@ def register_blog(
         return _post_detail(doc)
 
     @router.patch("/api/admin/blog/posts/{pid}")
-    async def admin_blog_update(pid: str, payload: BlogPostIn, _: Any = Depends(require_admin)):
+    async def admin_blog_update(pid: str, payload: BlogPostPatch, _: Any = Depends(require_admin)):
         existing = await db.blog_posts.find_one({"id": pid}, {"_id": 0})
         if not existing:
             raise HTTPException(404, "Post not found")
-        base_slug = _slugify(payload.slug or payload.title)
-        slug = await _ensure_unique_slug(base_slug, ignore_id=pid)
-        clean_html = sanitize_html(payload.content_html)
-        excerpt = (payload.excerpt or _strip_html(clean_html)[:200] + "…").strip()
-        update = {
-            "title": payload.title.strip(),
-            "slug": slug,
-            "excerpt": excerpt,
-            "content_html": clean_html,
-            "cover_image": payload.cover_image,
-            "category": (payload.category or "").strip() or None,
-            "tags": [t.strip() for t in (payload.tags or []) if t.strip()],
-            "status": payload.status,
-            "reading_time_min": _reading_time(clean_html),
-            "seo_title": payload.seo_title,
-            "seo_description": payload.seo_description,
-            "canonical_url": payload.canonical_url,
-            "faq": [f.model_dump() for f in (payload.faq or [])],
-            "tldr": payload.tldr,
-            "keywords": [k.strip() for k in (payload.keywords or []) if k.strip()],
-            "updated_at": _now().isoformat(),
-        }
-        if payload.status == "published" and not existing.get("published_at"):
-            update["published_at"] = _now().isoformat()
+        # Only apply fields the client explicitly sent. Everything else is
+        # preserved from the existing document — true PATCH semantics.
+        sent = payload.model_dump(exclude_unset=True)
+        update: dict = {"updated_at": _now().isoformat()}
+
+        if "content_html" in sent:
+            clean_html = sanitize_html(sent["content_html"])
+            update["content_html"] = clean_html
+            update["reading_time_min"] = _reading_time(clean_html)
+            # Refresh excerpt only if the client did NOT send a fresh one too.
+            if "excerpt" not in sent and not existing.get("excerpt"):
+                update["excerpt"] = (_strip_html(clean_html)[:200] + "…").strip()
+
+        if "title" in sent or "slug" in sent:
+            base_slug = _slugify(sent.get("slug") or sent.get("title") or existing["title"])
+            update["slug"] = await _ensure_unique_slug(base_slug, ignore_id=pid)
+            if "title" in sent:
+                update["title"] = sent["title"].strip()
+
+        if "excerpt" in sent:
+            update["excerpt"] = (sent["excerpt"] or "").strip()
+        if "cover_image" in sent:
+            update["cover_image"] = sent["cover_image"]
+        if "category" in sent:
+            update["category"] = (sent["category"] or "").strip() or None
+        if "tags" in sent:
+            update["tags"] = [t.strip() for t in (sent["tags"] or []) if t.strip()]
+        if "status" in sent:
+            update["status"] = sent["status"]
+            if sent["status"] == "published" and not existing.get("published_at"):
+                update["published_at"] = _now().isoformat()
+        if "seo_title" in sent:
+            update["seo_title"] = sent["seo_title"]
+        if "seo_description" in sent:
+            update["seo_description"] = sent["seo_description"]
+        if "canonical_url" in sent:
+            update["canonical_url"] = sent["canonical_url"]
+        if "faq" in sent:
+            update["faq"] = [
+                f.model_dump() if hasattr(f, "model_dump") else f
+                for f in (sent["faq"] or [])
+            ]
+        if "tldr" in sent:
+            update["tldr"] = sent["tldr"]
+        if "keywords" in sent:
+            update["keywords"] = [k.strip() for k in (sent["keywords"] or []) if k.strip()]
+
         await db.blog_posts.update_one({"id": pid}, {"$set": update})
         merged = {**existing, **update}
         return _post_detail(merged)

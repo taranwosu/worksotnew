@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Clock, Tag as TagIcon, Search, Sparkles, Mail } from "lucide-react";
+import { ArrowUpRight, Clock, Tag as TagIcon, Search, Sparkles, Mail, Rss } from "lucide-react";
 import {
   listBlogPosts,
   listBlogCategories,
@@ -46,6 +46,19 @@ export function BlogPage() {
       setTags(t);
     });
     return () => { cancelled = true; };
+  }, []);
+
+  // Discoverable RSS — adds <link rel="alternate" type="application/rss+xml">
+  // so browsers, feed readers, and AI agents can find the feed automatically.
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "alternate";
+    link.type = "application/rss+xml";
+    link.title = "WorkSoy Journal RSS";
+    link.href = "https://worksoy.com/api/blog/rss.xml";
+    link.dataset.blogRss = "1";
+    document.head.appendChild(link);
+    return () => { link.remove(); };
   }, []);
 
   useEffect(() => {
@@ -325,6 +338,15 @@ export function BlogPage() {
                 </button>
               </div>
               <p className="mt-3 text-[12px] text-cream/50">No spam. Unsubscribe anywhere in the email.</p>
+              <a
+                data-testid="blog-rss-link"
+                href={`${(import.meta.env.VITE_BACKEND_URL as string) || ""}/api/blog/rss.xml`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex items-center gap-2 text-[12px] text-cream/60 hover:text-sun"
+              >
+                <Rss className="h-3 w-3" /> Or subscribe via RSS
+              </a>
             </form>
           </div>
         </Container>
