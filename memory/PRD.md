@@ -137,3 +137,28 @@ Add **"Related expert"** call-out at the bottom of each blog post: pick 1-2 vett
 - Open Graph / Twitter Card per post (currently using site-wide defaults via usePageMeta).
 - Author profile page (`/blog/author/{slug}`) — list all posts by author.
 - Code syntax highlighting inside post bodies (Prism / Shiki client-side).
+
+## Session 2026-06-11 (7) — Blog v1.3 (auto-save · OG · authors · code highlighting)
+
+### Shipped
+- **Auto-save drafts**: 15s interval while editor is dirty + tab visible + not already saving. First autosave promotes 'new' to a persisted post (captures id in `persistedId`); manual saves reuse the same id (no duplicates). Never autosaves published posts. Live status indicator: 'Unsaved changes' → 'Auto-saving…' → 'Saved Ns/Nm ago' (RelativeSaved component, 10s tick).
+- **OG / Twitter Card per post**: `GET /api/blog/og/{slug}.png` renders 1200×630 PNG via Pillow with WorkSoy branding (cream bg, ink text, sun accent, optional right-side cover image w/ cream gradient overlay, auto-fitted title 62→38px). Cached by `{post_id}_{updated_at}` — only re-renders on edit. `usePageMeta()` on post page now emits `og:image` + `twitter:image` + `og:type=article`.
+- **Author profile**: `GET /api/blog/authors` + `GET /api/blog/authors/{slug}` (slug auto-computed). New route `/blog/author/$authorSlug` → AuthorPage (avatar, post count, total reads, since-year, categories, full post grid). Every post header now links author name to their profile.
+- **Code syntax highlighting**: highlight.js (common bundle + github-dark theme) on `/blog/:slug`. `useEffect` on bodyHtml change calls `highlightElement()` per `<pre code>` once (data-highlighted guard). CSS scoped `:not(.hljs)` fallback so non-highlighted blocks still readable.
+
+### Tests
+- **63 cases total** across `test_blog.py` (25) + `test_blog_iter8.py` (4) + `test_blog_iter9.py` (12) + `test_blog_iter10.py` (10). 62/63 pass in clean run. 1 pre-existing fail = `/api/blog/assets/{fid}` Cache-Control header overridden by Cloudflare proxy in **preview env only** (verified correct locally at :8001 → `cache-control: public, max-age=604800, immutable`; production worksoy.com unaffected). The RSS `<link rel=alternate>` was already fixed to `VITE_BACKEND_URL` in iter-9 (test report's "carry-forward" note is stale).
+
+### Files
+- `/app/backend/routers/blog.py` — OG endpoint, author endpoints, `_author_slug()` helper.
+- `/app/backend/requirements.txt` — pillow==12.2.0.
+- `/app/src/pages/AuthorPage.tsx` (new), `/app/src/pages/BlogPostPage.tsx` (hljs + author link + og:image), `/app/src/components/AdminBlogTab.tsx` (autosave + RelativeSaved).
+- `/app/src/lib/blog.ts` — AuthorProfile, getAuthor, listAuthors, `author_slug` on BlogPost type.
+- `/app/src/App.tsx` — registered AuthorPage route.
+- `/app/src/index.css` — scoped pre/code colour fallback for hljs theme.
+
+### Outstanding (truly low priority)
+- 7-day window-aggregated `view_count` is in-memory — single-instance only. Move to Redis when scaling horizontally.
+- TipTap admin editor itself doesn't get syntax highlighting in code blocks (only the public reader). Add `@tiptap/extension-code-block-lowlight` if admins want WYSIWYG-time colour.
+- Comment threading (reply-to) — currently flat.
+- RSS includes excerpt only, not full body. Some readers prefer full content<:encoded>.

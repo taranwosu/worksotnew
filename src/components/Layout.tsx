@@ -113,12 +113,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const navLinks = [
     { to: "/experts", label: "Network", index: "01" },
-    { to: "/process", label: "Vetting", index: "02" },
-    { to: "/how-it-works", label: "How we work", index: "03" },
-    { to: "/managed-services", label: "Managed", index: "04" },
-    { to: "/pricing", label: "Pricing", index: "05" },
-    { to: "/blog", label: "Journal", index: "06" },
-    { to: "/for-experts", label: "For experts", index: "07" },
+    { to: "/managed-services", label: "Managed", index: "02" },
+    { to: "/pricing", label: "Pricing", index: "03" },
+    { to: "/blog", label: "Journal", index: "04" },
   ];
 
   const userName =
@@ -329,6 +326,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <Link
+                  to="/for-experts"
+                  data-testid="nav-for-experts"
+                  className="hidden items-center gap-1 border-r border-ink-10 pr-4 text-[12.5px] text-ink-60 transition-colors hover:text-ink lg:inline-flex"
+                >
+                  For experts <span aria-hidden>→</span>
+                </Link>
+                <Link
                   to="/signin"
                   className="px-3 py-2 text-[13px] font-medium text-ink-60 transition-colors hover:text-ink"
                 >
@@ -366,6 +370,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <span className="font-medium">{link.label}</span>
                 </Link>
               ))}
+
+              <div className="my-3 border-t border-ink-10" />
+
+              {/* Secondary nav — kept off the primary bar but still
+                  reachable on mobile. */}
+              <div className="px-3 pb-1 pt-1">
+                <p className="font-mono text-[10px] tracking-[0.14em] text-ink-40">MORE</p>
+              </div>
+              <MobileLink to="/for-experts" onClose={() => setMobileOpen(false)}>
+                For experts
+              </MobileLink>
+              <MobileLink to="/how-it-works" onClose={() => setMobileOpen(false)}>
+                How we work
+              </MobileLink>
+              <MobileLink to="/process" onClose={() => setMobileOpen(false)}>
+                Vetting gauntlet
+              </MobileLink>
 
               <div className="my-3 border-t border-ink-10" />
 
@@ -556,6 +577,7 @@ function Footer() {
             links={[
               { label: "Browse the network", to: "/experts" },
               { label: "How we work", to: "/how-it-works" },
+              { label: "Vetting gauntlet", to: "/process" },
               { label: "Managed service", to: "/managed-services" },
               { label: "Pricing", to: "/pricing" },
               { label: "Post a brief", to: "/post-request" },
@@ -569,7 +591,7 @@ function Footer() {
               { label: "Apply to practice", to: "/onboarding/expert" },
               { label: "Join the managed pool", to: "/managed-talent" },
               { label: "Rate benchmarks", to: "/pricing" },
-              { label: "Field notes", to: "/how-it-works" },
+              { label: "The Journal", to: "/blog" },
             ]}
           />
           <FooterCol

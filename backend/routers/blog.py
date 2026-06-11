@@ -246,6 +246,7 @@ class CommentIn(BaseModel):
     author_name: str = Field(min_length=1, max_length=80)
     author_email: EmailStr
     body: str = Field(min_length=2, max_length=4000)
+    parent_id: Optional[str] = None  # Reply target. Only one level of nesting.
 
 
 class SubscribeIn(BaseModel):
@@ -631,22 +632,53 @@ def register_blog(
             db.blog_comments.find(
                 {"post_id": doc["id"], "status": "approved"}, {"_id": 0}
             )
-            .sort("created_at", -1)
-            .limit(50)
+            .sort("created_at", 1)  # oldest first so replies thread naturally
+            .limit(200)
         )
-        comments = await comments_cur.to_list(length=50)
-        return {
-            "post": _post_detail(doc),
-            "related": [_post_summary(r) for r in related],
-            "comments": [
-                {
+        comments_raw = await comments_cur.to_list(length=200)
+        # Build a 2-level thread: top-level (parent_id is None) + their replies.
+        # Replies to replies collapse to the same thread root (no deep nesting).
+        threads: dict[str, dict] = {}
+        for c in comments_raw:
+            if not c.get("parent_id"):
+                threads[c["id"]] = {
                     "id": c["id"],
                     "author_name": c["author_name"],
                     "body": c["body"],
                     "created_at": c["created_at"],
+                    "replies": [],
                 }
-                for c in comments
-            ],
+        for c in comments_raw:
+            pid = c.get("parent_id")
+            if not pid:
+                continue
+            # Walk up: if the parent is itself a reply, attach to its root.
+            root = pid
+            while root and root not in threads:
+                parent = next((x for x in comments_raw if x["id"] == root), None)
+                if not parent:
+                    break
+                root = parent.get("parent_id")
+                if not root:
+                    break
+            if root in threads:
+                threads[root]["replies"].append(
+                    {
+                        "id": c["id"],
+                        "author_name": c["author_name"],
+                        "body": c["body"],
+                        "created_at": c["created_at"],
+                        "parent_id": pid,
+                    }
+                )
+        # Render newest threads first; replies stay oldest-first inside.
+        threaded = sorted(
+            threads.values(), key=lambda t: t["created_at"], reverse=True
+        )
+        return {
+            "post": _post_detail(doc),
+            "related": [_post_summary(r) for r in related],
+            "comments": threaded,
         }
 
     @router.get("/api/blog/posts/{slug}/related-experts")
@@ -735,6 +767,17 @@ def register_blog(
         post = await db.blog_posts.find_one({"id": payload.post_id}, {"_id": 0, "id": 1})
         if not post:
             raise HTTPException(404, "Post not found")
+        parent_id: Optional[str] = None
+        if payload.parent_id:
+            parent = await db.blog_comments.find_one(
+                {"id": payload.parent_id, "post_id": payload.post_id},
+                {"_id": 0, "id": 1, "status": 1},
+            )
+            if not parent:
+                raise HTTPException(404, "Parent comment not found")
+            if parent.get("status") not in ("approved", "pending"):
+                raise HTTPException(400, "Cannot reply to a removed comment")
+            parent_id = payload.parent_id
         cid = f"cm_{uuid.uuid4().hex[:12]}"
         body = payload.body.strip()
         is_spam = bool(re.search(r"https?://\S+", body)) and len(body) < 60
@@ -743,6 +786,7 @@ def register_blog(
         doc = {
             "id": cid,
             "post_id": payload.post_id,
+            "parent_id": parent_id,
             "author_name": payload.author_name.strip(),
             "author_email": payload.author_email.lower(),
             "body": body,
@@ -750,7 +794,7 @@ def register_blog(
             "created_at": _now().isoformat(),
         }
         await db.blog_comments.insert_one(doc)
-        return {"id": cid, "status": doc["status"]}
+        return {"id": cid, "status": doc["status"], "parent_id": parent_id}
 
     @router.post("/api/blog/subscribe")
     async def blog_subscribe(payload: SubscribeIn, request: Request):
