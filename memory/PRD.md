@@ -84,3 +84,9 @@ Add a public, indexable **"Vetting transparency" page** at `/process` showing th
 - api.ts: added `ContactSubmission` type, `adminListContactSubmissions`, `adminMarkContactHandled`.
 - Verified via Playwright: tab renders 4 leads, managed filter shows 3, mark-handled drops count to 3 with toast.
 - Lesson: parallel search_replace edits to the SAME file can race (one edit was silently lost); apply multiple edits to one file sequentially or in a single call.
+
+### Addendum 2026-06-11 (3) — Full regression (iteration 6)
+- Testing agent ran full regression on merged codebase + new managed funnel: ZERO product bugs. 11/11 new pytest cases pass (`/app/backend/tests/test_managed_funnel.py` — canonical managed-funnel regression). Frontend 100% (all 8 admin tabs, both marketing pages, apply flows).
+- Hardening applied post-report: `_rate_limit(request, "pool-apply")` added to POST /api/pool/apply. Contact topic already Literal-validated (reviewer note was incorrect).
+- Known stale legacy tests (NOT product bugs, deferred): backend_test.py hardcoded seed counts; test_worksoy_payouts.py uses /api/payouts/* instead of /api/me/payouts/*; test_managed_service.py hardcoded managed_client@worksoy.com creds.
+- Report: /app/test_reports/iteration_6.json

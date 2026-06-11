@@ -4639,7 +4639,8 @@ async def pool_my_application(request: Request):
 
 
 @app.post("/api/pool/apply")
-async def pool_apply(payload: PoolApplicationIn, user: User = Depends(get_current_user)):
+async def pool_apply(payload: PoolApplicationIn, request: Request, user: User = Depends(get_current_user)):
+    _rate_limit(request, "pool-apply")
     member = await db.pool_members.find_one(
         {"user_id": user.user_id, "status": {"$in": ["active", "suspended"]}}, {"_id": 0, "id": 1}
     )
