@@ -4880,6 +4880,484 @@ async def admin_update_task_notes(task_id: str, payload: ManagedHoldIn, _: User 
 
 
 # =========================================================================
+# Blog (CMS + public + AI assist)
+# =========================================================================
+import re as _re_blog
+from fastapi.responses import PlainTextResponse, Response as _BlogResponse
+
+APP_BASE_URL_BLOG = os.environ.get("APP_BASE_URL", "https://worksoy.com").rstrip("/")
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "").strip()
+
+
+def _slugify(text: str) -> str:
+    text = (text or "").lower().strip()
+    text = _re_blog.sub(r"[^a-z0-9\s-]", "", text)
+    text = _re_blog.sub(r"[\s_]+", "-", text)
+    text = _re_blog.sub(r"-+", "-", text).strip("-")
+    return text[:80] or f"post-{uuid.uuid4().hex[:6]}"
+
+
+def _strip_html(html: str) -> str:
+    txt = _re_blog.sub(r"<[^>]+>", " ", html or "")
+    return _re_blog.sub(r"\s+", " ", txt).strip()
+
+
+def _reading_time(html: str) -> int:
+    words = len(_strip_html(html).split())
+    return max(1, round(words / 220))
+
+
+class BlogPostIn(BaseModel):
+    title: str
+    slug: Optional[str] = None
+    excerpt: Optional[str] = None
+    content_html: str
+    cover_image: Optional[str] = None
+    category: Optional[str] = None
+    tags: List[str] = []
+    status: Literal["draft", "published"] = "draft"
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    canonical_url: Optional[str] = None
+    faq: List[dict] = []  # [{question, answer}]
+    tldr: Optional[str] = None
+    keywords: List[str] = []
+
+
+class CommentIn(BaseModel):
+    post_id: str
+    author_name: str = Field(min_length=1, max_length=80)
+    author_email: EmailStr
+    body: str = Field(min_length=2, max_length=4000)
+
+
+class SubscribeIn(BaseModel):
+    email: EmailStr
+    source: Optional[str] = "blog"
+
+
+class AiMetaIn(BaseModel):
+    title: str
+    content_html: str
+    mode: Literal["meta", "summary", "faq", "keywords"] = "meta"
+
+
+def _post_public(doc: dict) -> dict:
+    return {
+        "id": doc["id"],
+        "title": doc["title"],
+        "slug": doc["slug"],
+        "excerpt": doc.get("excerpt") or "",
+        "content_html": doc.get("content_html") or "",
+        "cover_image": doc.get("cover_image"),
+        "category": doc.get("category"),
+        "tags": doc.get("tags") or [],
+        "status": doc.get("status", "draft"),
+        "author_name": doc.get("author_name") or "WorkSoy Editorial",
+        "author_picture": doc.get("author_picture"),
+        "reading_time_min": doc.get("reading_time_min", 1),
+        "view_count": doc.get("view_count", 0),
+        "seo_title": doc.get("seo_title"),
+        "seo_description": doc.get("seo_description"),
+        "canonical_url": doc.get("canonical_url"),
+        "faq": doc.get("faq") or [],
+        "tldr": doc.get("tldr"),
+        "keywords": doc.get("keywords") or [],
+        "published_at": doc.get("published_at"),
+        "updated_at": doc.get("updated_at"),
+        "created_at": doc.get("created_at"),
+    }
+
+
+async def _ensure_unique_slug(slug: str, ignore_id: Optional[str] = None) -> str:
+    base = slug
+    n = 2
+    while True:
+        q: dict = {"slug": slug}
+        if ignore_id:
+            q["id"] = {"$ne": ignore_id}
+        clash = await db.blog_posts.find_one(q, {"_id": 0, "id": 1})
+        if not clash:
+            return slug
+        slug = f"{base}-{n}"
+        n += 1
+
+
+# ---- Public ----
+@app.get("/api/blog/posts")
+async def blog_list(
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    tag: Optional[str] = None,
+    limit: int = 24,
+    skip: int = 0,
+):
+    f: dict = {"status": "published"}
+    if category:
+        f["category"] = category
+    if tag:
+        f["tags"] = tag
+    if q:
+        f["$or"] = [
+            {"title": {"$regex": q, "$options": "i"}},
+            {"excerpt": {"$regex": q, "$options": "i"}},
+            {"keywords": {"$regex": q, "$options": "i"}},
+        ]
+    cur = db.blog_posts.find(f, {"_id": 0}).sort("published_at", -1).skip(max(0, skip)).limit(min(100, max(1, limit)))
+    docs = await cur.to_list(length=100)
+    total = await db.blog_posts.count_documents(f)
+    return {"posts": [_post_public(d) for d in docs], "total": total}
+
+
+@app.get("/api/blog/posts/{slug}")
+async def blog_get(slug: str):
+    doc = await db.blog_posts.find_one({"slug": slug, "status": "published"}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Post not found")
+    # async-fire-and-forget view increment
+    await db.blog_posts.update_one({"id": doc["id"]}, {"$inc": {"view_count": 1}})
+    related_cur = db.blog_posts.find(
+        {
+            "status": "published",
+            "id": {"$ne": doc["id"]},
+            "$or": [
+                {"category": doc.get("category")} if doc.get("category") else {"_unused": 1},
+                {"tags": {"$in": doc.get("tags") or []}} if doc.get("tags") else {"_unused": 1},
+            ],
+        },
+        {"_id": 0},
+    ).sort("published_at", -1).limit(4)
+    related = await related_cur.to_list(length=4)
+    comments_cur = db.blog_comments.find(
+        {"post_id": doc["id"], "status": "approved"}, {"_id": 0}
+    ).sort("created_at", -1).limit(50)
+    comments = await comments_cur.to_list(length=50)
+    return {
+        "post": _post_public(doc),
+        "related": [_post_public(r) for r in related],
+        "comments": [
+            {
+                "id": c["id"],
+                "author_name": c["author_name"],
+                "body": c["body"],
+                "created_at": c["created_at"],
+            }
+            for c in comments
+        ],
+    }
+
+
+@app.get("/api/blog/categories")
+async def blog_categories():
+    pipeline = [
+        {"$match": {"status": "published"}},
+        {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+        {"$match": {"_id": {"$ne": None}}},
+        {"$sort": {"count": -1}},
+    ]
+    rows = await db.blog_posts.aggregate(pipeline).to_list(length=100)
+    return [{"category": r["_id"], "count": r["count"]} for r in rows if r["_id"]]
+
+
+@app.get("/api/blog/tags")
+async def blog_tags():
+    pipeline = [
+        {"$match": {"status": "published"}},
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 60},
+    ]
+    rows = await db.blog_posts.aggregate(pipeline).to_list(length=60)
+    return [{"tag": r["_id"], "count": r["count"]} for r in rows]
+
+
+@app.post("/api/blog/comments")
+async def blog_post_comment(payload: CommentIn, request: Request):
+    _rate_limit(request, "blog-comment")
+    post = await db.blog_posts.find_one({"id": payload.post_id}, {"_id": 0, "id": 1})
+    if not post:
+        raise HTTPException(404, "Post not found")
+    cid = f"cm_{uuid.uuid4().hex[:12]}"
+    # naive spam guard
+    body = payload.body.strip()
+    is_spam = bool(_re_blog.search(r"https?://\S+", body)) and len(body) < 60
+    doc = {
+        "id": cid,
+        "post_id": payload.post_id,
+        "author_name": payload.author_name.strip(),
+        "author_email": payload.author_email.lower(),
+        "body": body,
+        "status": "pending" if is_spam else "approved",
+        "created_at": _now().isoformat(),
+    }
+    await db.blog_comments.insert_one(doc)
+    return {"id": cid, "status": doc["status"]}
+
+
+@app.post("/api/blog/subscribe")
+async def blog_subscribe(payload: SubscribeIn, request: Request):
+    _rate_limit(request, "blog-subscribe")
+    email = payload.email.lower()
+    existing = await db.newsletter_subscribers.find_one({"email": email}, {"_id": 0, "email": 1})
+    if existing:
+        return {"ok": True, "already_subscribed": True}
+    await db.newsletter_subscribers.insert_one({
+        "id": f"sub_{uuid.uuid4().hex[:10]}",
+        "email": email,
+        "source": payload.source or "blog",
+        "created_at": _now().isoformat(),
+    })
+    return {"ok": True, "already_subscribed": False}
+
+
+# ---- Sitemap & robots (public, indexable) ----
+_STATIC_SITEMAP_PATHS = [
+    "/", "/experts", "/how-it-works", "/managed-services", "/managed-talent",
+    "/pricing", "/for-experts", "/process", "/contact", "/blog",
+    "/legal/terms", "/legal/privacy", "/legal/acceptable-use",
+]
+
+
+@app.get("/api/sitemap.xml")
+async def sitemap_xml():
+    posts = await db.blog_posts.find(
+        {"status": "published"}, {"_id": 0, "slug": 1, "updated_at": 1, "published_at": 1}
+    ).to_list(length=1000)
+    urls = []
+    for p in _STATIC_SITEMAP_PATHS:
+        urls.append(f"<url><loc>{APP_BASE_URL_BLOG}{p}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>")
+    for d in posts:
+        lastmod = d.get("updated_at") or d.get("published_at") or ""
+        urls.append(
+            f"<url><loc>{APP_BASE_URL_BLOG}/blog/{d['slug']}</loc>"
+            + (f"<lastmod>{lastmod[:10]}</lastmod>" if lastmod else "")
+            + "<changefreq>monthly</changefreq><priority>0.8</priority></url>"
+        )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(urls)
+        + "\n</urlset>\n"
+    )
+    return _BlogResponse(content=xml, media_type="application/xml")
+
+
+@app.get("/api/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    return (
+        "# WorkSoy — robots.txt (AI + traditional crawlers welcome)\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /admin\n"
+        "Disallow: /admin/\n"
+        "Disallow: /dashboard\n"
+        "Disallow: /onboarding/\n"
+        "Disallow: /post-request\n"
+        "Disallow: /briefs/\n"
+        "Disallow: /contracts/\n"
+        "Disallow: /messages\n"
+        "Disallow: /settings\n"
+        "\n# AI / Answer engines — explicitly welcomed for GEO + AEO\n"
+        "User-agent: GPTBot\nAllow: /\n\n"
+        "User-agent: ChatGPT-User\nAllow: /\n\n"
+        "User-agent: OAI-SearchBot\nAllow: /\n\n"
+        "User-agent: ClaudeBot\nAllow: /\n\n"
+        "User-agent: Claude-Web\nAllow: /\n\n"
+        "User-agent: Google-Extended\nAllow: /\n\n"
+        "User-agent: PerplexityBot\nAllow: /\n\n"
+        "User-agent: Perplexity-User\nAllow: /\n\n"
+        "User-agent: Applebot-Extended\nAllow: /\n\n"
+        "User-agent: Bytespider\nAllow: /\n\n"
+        "User-agent: CCBot\nAllow: /\n\n"
+        f"Sitemap: {APP_BASE_URL_BLOG}/api/sitemap.xml\n"
+    )
+
+
+# ---- Admin CMS ----
+@app.get("/api/admin/blog/posts")
+async def admin_blog_list(_: User = Depends(require_admin), status: Optional[str] = None):
+    f: dict = {}
+    if status:
+        f["status"] = status
+    cur = db.blog_posts.find(f, {"_id": 0}).sort("created_at", -1).limit(500)
+    docs = await cur.to_list(length=500)
+    return [_post_public(d) for d in docs]
+
+
+@app.post("/api/admin/blog/posts")
+async def admin_blog_create(payload: BlogPostIn, admin: User = Depends(require_admin)):
+    pid = f"bp_{uuid.uuid4().hex[:12]}"
+    base_slug = _slugify(payload.slug or payload.title)
+    slug = await _ensure_unique_slug(base_slug)
+    now = _now().isoformat()
+    excerpt = (payload.excerpt or _strip_html(payload.content_html)[:200] + "…").strip()
+    doc = {
+        "id": pid,
+        "title": payload.title.strip(),
+        "slug": slug,
+        "excerpt": excerpt,
+        "content_html": payload.content_html,
+        "cover_image": payload.cover_image,
+        "category": (payload.category or "").strip() or None,
+        "tags": [t.strip() for t in (payload.tags or []) if t.strip()],
+        "status": payload.status,
+        "author_user_id": admin.user_id,
+        "author_name": admin.name,
+        "author_picture": admin.picture,
+        "reading_time_min": _reading_time(payload.content_html),
+        "view_count": 0,
+        "seo_title": payload.seo_title,
+        "seo_description": payload.seo_description,
+        "canonical_url": payload.canonical_url,
+        "faq": payload.faq or [],
+        "tldr": payload.tldr,
+        "keywords": [k.strip() for k in (payload.keywords or []) if k.strip()],
+        "created_at": now,
+        "updated_at": now,
+        "published_at": now if payload.status == "published" else None,
+    }
+    await db.blog_posts.insert_one(doc)
+    return _post_public(doc)
+
+
+@app.patch("/api/admin/blog/posts/{pid}")
+async def admin_blog_update(pid: str, payload: BlogPostIn, _: User = Depends(require_admin)):
+    existing = await db.blog_posts.find_one({"id": pid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Post not found")
+    base_slug = _slugify(payload.slug or payload.title)
+    slug = await _ensure_unique_slug(base_slug, ignore_id=pid)
+    excerpt = (payload.excerpt or _strip_html(payload.content_html)[:200] + "…").strip()
+    update = {
+        "title": payload.title.strip(),
+        "slug": slug,
+        "excerpt": excerpt,
+        "content_html": payload.content_html,
+        "cover_image": payload.cover_image,
+        "category": (payload.category or "").strip() or None,
+        "tags": [t.strip() for t in (payload.tags or []) if t.strip()],
+        "status": payload.status,
+        "reading_time_min": _reading_time(payload.content_html),
+        "seo_title": payload.seo_title,
+        "seo_description": payload.seo_description,
+        "canonical_url": payload.canonical_url,
+        "faq": payload.faq or [],
+        "tldr": payload.tldr,
+        "keywords": [k.strip() for k in (payload.keywords or []) if k.strip()],
+        "updated_at": _now().isoformat(),
+    }
+    if payload.status == "published" and not existing.get("published_at"):
+        update["published_at"] = _now().isoformat()
+    await db.blog_posts.update_one({"id": pid}, {"$set": update})
+    merged = {**existing, **update}
+    return _post_public(merged)
+
+
+@app.delete("/api/admin/blog/posts/{pid}")
+async def admin_blog_delete(pid: str, _: User = Depends(require_admin)):
+    res = await db.blog_posts.delete_one({"id": pid})
+    if not res.deleted_count:
+        raise HTTPException(404, "Post not found")
+    await db.blog_comments.delete_many({"post_id": pid})
+    return {"ok": True}
+
+
+@app.get("/api/admin/blog/comments")
+async def admin_comments_list(_: User = Depends(require_admin), status: Optional[str] = None):
+    f: dict = {}
+    if status:
+        f["status"] = status
+    cur = db.blog_comments.find(f, {"_id": 0}).sort("created_at", -1).limit(500)
+    return await cur.to_list(length=500)
+
+
+@app.post("/api/admin/blog/comments/{cid}/status")
+async def admin_comment_status(cid: str, status: str, _: User = Depends(require_admin)):
+    if status not in ("approved", "pending", "spam"):
+        raise HTTPException(400, "Invalid status")
+    res = await db.blog_comments.update_one({"id": cid}, {"$set": {"status": status}})
+    if not res.matched_count:
+        raise HTTPException(404, "Comment not found")
+    return {"ok": True}
+
+
+@app.delete("/api/admin/blog/comments/{cid}")
+async def admin_comment_delete(cid: str, _: User = Depends(require_admin)):
+    await db.blog_comments.delete_one({"id": cid})
+    return {"ok": True}
+
+
+@app.get("/api/admin/blog/subscribers")
+async def admin_subscribers(_: User = Depends(require_admin)):
+    docs = await db.newsletter_subscribers.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=2000)
+    return docs
+
+
+@app.post("/api/admin/blog/ai/generate")
+async def admin_blog_ai(payload: AiMetaIn, _: User = Depends(require_admin)):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "AI assist unavailable: EMERGENT_LLM_KEY not configured")
+    plain = _strip_html(payload.content_html)[:6000]
+    if payload.mode == "meta":
+        prompt = (
+            "You are an SEO copywriter. Given a blog title and content, write ONE "
+            "single SEO meta description, 140-158 characters, action-oriented, "
+            "no quotes, no emoji. Output ONLY the description.\n\n"
+            f"Title: {payload.title}\nContent: {plain}"
+        )
+        system = "You output concise, optimised meta descriptions only."
+    elif payload.mode == "summary":
+        prompt = (
+            "Write a tight, 2-3 sentence TL;DR for the post below, written in "
+            "the editorial first-person plural ('we', 'our'). No marketing fluff. "
+            "Plain text only.\n\n"
+            f"Title: {payload.title}\nContent: {plain}"
+        )
+        system = "You write crisp, factual TL;DRs."
+    elif payload.mode == "keywords":
+        prompt = (
+            "Extract 5 to 8 short SEO keywords from the post below. Return as a "
+            "JSON array of strings only, no prose.\n\n"
+            f"Title: {payload.title}\nContent: {plain}"
+        )
+        system = "You extract SEO keywords. Output JSON array only."
+    else:  # faq
+        prompt = (
+            "From the post below, produce 4 AEO-optimised FAQ pairs that a reader "
+            "or AI assistant would actually ask. Output as JSON: "
+            '[{"question":"...","answer":"..."}]. No prose outside JSON. Each '
+            "answer must be 2-3 sentences, self-contained.\n\n"
+            f"Title: {payload.title}\nContent: {plain}"
+        )
+        system = "You produce FAQ JSON for AEO. Output JSON only."
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"blog-ai-{uuid.uuid4().hex[:8]}",
+            system_message=system,
+        ).with_model("anthropic", "claude-sonnet-4-6")
+        result = await chat.send_message(UserMessage(text=prompt))
+        text = (result or "").strip()
+    except Exception as e:  # noqa: BLE001
+        log.exception("Blog AI generate failed")
+        raise HTTPException(500, f"AI request failed: {e}")
+
+    if payload.mode in ("keywords", "faq"):
+        import json as _json
+        # strip code fences if any
+        cleaned = _re_blog.sub(r"^```(?:json)?|```$", "", text.strip(), flags=_re_blog.MULTILINE).strip()
+        try:
+            data = _json.loads(cleaned)
+            return {"result": data, "mode": payload.mode}
+        except Exception:
+            return {"result": text, "mode": payload.mode, "raw": True}
+    return {"result": text, "mode": payload.mode}
+
+
+# =========================================================================
 # Startup
 # =========================================================================
 @app.on_event("startup")
@@ -4970,6 +5448,18 @@ async def _startup():
     await db.pool_ratings.create_index("id", unique=True)
     await db.pool_ratings.create_index("pool_member_id")
     await db.pool_ratings.create_index("task_id", unique=True)
+
+    # Blog
+    await db.blog_posts.create_index("id", unique=True)
+    await db.blog_posts.create_index("slug", unique=True)
+    await db.blog_posts.create_index("status")
+    await db.blog_posts.create_index("category")
+    await db.blog_posts.create_index("tags")
+    await db.blog_posts.create_index([("published_at", -1)])
+    await db.blog_comments.create_index("id", unique=True)
+    await db.blog_comments.create_index("post_id")
+    await db.blog_comments.create_index("status")
+    await db.newsletter_subscribers.create_index("email", unique=True)
 
     # Seed admin (only if ADMIN_PASSWORD is configured)
     existing = await db.users.find_one({"email": ADMIN_EMAIL}, {"_id": 0, "user_id": 1})

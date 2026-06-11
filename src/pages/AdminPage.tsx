@@ -23,6 +23,7 @@ import { DisputeThread } from "@/components/DisputeThread";
 import { AdminVettingPanel } from "@/components/AdminVettingPanel";
 import { AdminManagedPanel } from "@/components/managed/AdminManagedPanel";
 import { AdminLeadsTab } from "@/components/AdminLeadsTab";
+import { AdminBlogTab } from "@/components/AdminBlogTab";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 import { usePageMeta } from "@/lib/seo";
@@ -54,7 +55,7 @@ export function AdminPage() {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [leads, setLeads] = useState<ContactSubmission[]>([]);
-  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "payouts" | "vetting" | "managed" | "leads">("vetting");
+  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "payouts" | "vetting" | "managed" | "leads" | "blog">("vetting");
   const [loading, setLoading] = useState(true);
   const [openDispute, setOpenDispute] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -157,7 +158,7 @@ export function AdminPage() {
         )}
 
         <div className="mt-10 flex gap-2 border-b border-cream/10">
-          {(["vetting", "managed", "leads", "queue", "all", "briefs", "disputes", "payouts"] as const).map((t) => (
+          {(["vetting", "managed", "blog", "leads", "queue", "all", "briefs", "disputes", "payouts"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -171,6 +172,8 @@ export function AdminPage() {
                 ? "Vetting pipeline"
                 : t === "managed"
                 ? "Managed service"
+                : t === "blog"
+                ? "Blog CMS"
                 : t === "leads"
                 ? `Leads (${leads.filter((l) => !l.handled).length})`
                 : t === "queue"
@@ -192,6 +195,8 @@ export function AdminPage() {
           <div className="mt-8"><AdminVettingPanel /></div>
         ) : tab === "managed" ? (
           <div className="mt-8"><AdminManagedPanel /></div>
+        ) : tab === "blog" ? (
+          <AdminBlogTab />
         ) : tab === "leads" ? (
           <div className="mt-8"><AdminLeadsTab leads={leads} onChanged={load} /></div>
         ) : tab === "briefs" ? (

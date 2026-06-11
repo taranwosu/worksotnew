@@ -1,0 +1,408 @@
+import { useEffect, useState } from "react";
+import { Link, useParams, useNavigate } from "@tanstack/react-router";
+import { Clock, ArrowLeft, MessageSquare, Share2, Sparkles, ChevronRight } from "lucide-react";
+import { getBlogPost, postBlogComment, type BlogPostDetail } from "@/lib/blog";
+import { usePageMeta } from "@/lib/seo";
+import { Container, Eyebrow, Tag, Reveal } from "@/components/primitives";
+import { toast } from "sonner";
+
+function formatDate(iso?: string | null) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const ORIGIN = "https://worksoy.com";
+
+function injectJsonLd(post: BlogPostDetail["post"]) {
+  // BlogPosting + BreadcrumbList + Organization + optional FAQPage
+  const url = `${ORIGIN}/blog/${post.slug}`;
+  const blogPosting = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.seo_description || post.excerpt,
+    image: post.cover_image ? [post.cover_image] : undefined,
+    datePublished: post.published_at || post.created_at,
+    dateModified: post.updated_at || post.published_at || post.created_at,
+    author: {
+      "@type": "Person",
+      name: post.author_name,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "WorkSoy",
+      logo: { "@type": "ImageObject", url: `${ORIGIN}/favicon.ico` },
+    },
+    keywords: (post.keywords || []).join(", ") || undefined,
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    articleSection: post.category || undefined,
+    wordCount: (post.content_html || "").replace(/<[^>]+>/g, " ").trim().split(/\s+/).length,
+    timeRequired: `PT${post.reading_time_min}M`,
+  };
+  const breadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "WorkSoy", item: ORIGIN },
+      { "@type": "ListItem", position: 2, name: "Journal", item: `${ORIGIN}/blog` },
+      { "@type": "ListItem", position: 3, name: post.title, item: url },
+    ],
+  };
+  const faqPage =
+    post.faq && post.faq.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: post.faq.map((f) => ({
+            "@type": "Question",
+            name: f.question,
+            acceptedAnswer: { "@type": "Answer", text: f.answer },
+          })),
+        }
+      : null;
+  const blobs = [blogPosting, breadcrumb, faqPage].filter(Boolean);
+  return blobs;
+}
+
+export function BlogPostPage() {
+  const { slug } = useParams({ strict: false }) as { slug: string };
+  const navigate = useNavigate();
+  const [data, setData] = useState<BlogPostDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  // Comment form
+  const [cName, setCName] = useState("");
+  const [cEmail, setCEmail] = useState("");
+  const [cBody, setCBody] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setNotFound(false);
+    getBlogPost(slug)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setNotFound(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  usePageMeta({
+    title: data?.post.seo_title || data?.post.title || "Journal",
+    description: data?.post.seo_description || data?.post.excerpt,
+    path: `/blog/${slug}`,
+    image: data?.post.cover_image || undefined,
+  });
+
+  // Inject JSON-LD structured data
+  useEffect(() => {
+    if (!data) return;
+    const created: HTMLScriptElement[] = [];
+    for (const blob of injectJsonLd(data.post)) {
+      const s = document.createElement("script");
+      s.type = "application/ld+json";
+      s.text = JSON.stringify(blob);
+      s.dataset.blogJsonld = "1";
+      document.head.appendChild(s);
+      created.push(s);
+    }
+    return () => { for (const s of created) s.remove(); };
+  }, [data]);
+
+  const onCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!data) return;
+    setPosting(true);
+    try {
+      const r = await postBlogComment({
+        post_id: data.post.id,
+        author_name: cName,
+        author_email: cEmail,
+        body: cBody,
+      });
+      if (r.status === "approved") {
+        toast.success("Comment posted.");
+        // Optimistically add
+        setData({
+          ...data,
+          comments: [
+            { id: r.id, author_name: cName, body: cBody, created_at: new Date().toISOString() },
+            ...data.comments,
+          ],
+        });
+      } else {
+        toast.success("Comment received — held for review.");
+      }
+      setCName(""); setCEmail(""); setCBody("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not post comment");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const onShare = async () => {
+    if (typeof navigator !== "undefined" && navigator.share && data) {
+      try {
+        await navigator.share({ title: data.post.title, url: window.location.href });
+        return;
+      } catch { /* fall through */ }
+    }
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="bg-cream py-24">
+        <Container>
+          <div className="mx-auto h-96 max-w-3xl animate-pulse rounded bg-white/60" />
+        </Container>
+      </main>
+    );
+  }
+
+  if (notFound || !data) {
+    return (
+      <main className="bg-cream py-32">
+        <Container className="text-center">
+          <Eyebrow>404 · post</Eyebrow>
+          <h1 className="display-lg mt-4">This essay isn't here.</h1>
+          <p className="prose-lede mt-4">It may have been retired or never published.</p>
+          <button
+            onClick={() => navigate({ to: "/blog" })}
+            className="mt-8 inline-flex items-center gap-2 rounded border border-ink px-4 py-2 text-[13px] font-medium"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to the journal
+          </button>
+        </Container>
+      </main>
+    );
+  }
+
+  const { post, related, comments } = data;
+
+  return (
+    <main className="bg-cream">
+      {/* Breadcrumb / back */}
+      <Container className="pt-8 text-[13px] text-ink-60">
+        <nav className="flex items-center gap-2" aria-label="Breadcrumb">
+          <Link to="/" className="hover:text-ink">WorkSoy</Link>
+          <ChevronRight className="h-3 w-3" />
+          <Link to="/blog" className="hover:text-ink">Journal</Link>
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-ink">{post.category ?? "Essay"}</span>
+        </nav>
+      </Container>
+
+      {/* Article header */}
+      <article>
+        <header className="pb-10 pt-10">
+          <Container>
+            <div className="mx-auto max-w-3xl">
+              <div className="flex items-center gap-3">
+                {post.category && <Tag tone="sun" size="sm">{post.category}</Tag>}
+                <span className="eyebrow text-ink-60">{formatDate(post.published_at)}</span>
+                <span className="eyebrow inline-flex items-center gap-1 text-ink-60">
+                  <Clock className="h-3 w-3" /> {post.reading_time_min} min read
+                </span>
+              </div>
+              <h1 className="display-xl mt-6">{post.title}</h1>
+              {post.excerpt && <p className="prose-lede mt-6">{post.excerpt}</p>}
+              <div className="mt-8 flex items-center justify-between gap-4 border-y border-ink-10 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-cream">
+                    {post.author_name.charAt(0)}
+                  </div>
+                  <div>
+                    <div className="text-[14px] font-semibold">{post.author_name}</div>
+                    <div className="text-[12px] text-ink-60">WorkSoy Editorial</div>
+                  </div>
+                </div>
+                <button
+                  onClick={onShare}
+                  data-testid="blog-share-btn"
+                  className="inline-flex items-center gap-2 rounded border border-ink-20 bg-white px-3 py-1.5 text-[13px] font-medium hover:bg-cream-2"
+                >
+                  <Share2 className="h-3.5 w-3.5" /> Share
+                </button>
+              </div>
+            </div>
+          </Container>
+        </header>
+
+        {post.cover_image && (
+          <Container className="pb-10">
+            <div className="mx-auto max-w-4xl">
+              <img src={post.cover_image} alt={post.title} className="w-full rounded border border-ink-10" />
+            </div>
+          </Container>
+        )}
+
+        {/* TL;DR — AEO surface */}
+        {post.tldr && (
+          <Container className="pb-6">
+            <div className="mx-auto max-w-3xl">
+              <div className="flex items-start gap-3 rounded border-l-4 border-sun bg-paper px-5 py-4">
+                <Sparkles className="mt-0.5 h-4 w-4 text-sun-2" />
+                <div>
+                  <div className="eyebrow text-ink-60">TL;DR</div>
+                  <p className="mt-1 text-[15px] text-ink">{post.tldr}</p>
+                </div>
+              </div>
+            </div>
+          </Container>
+        )}
+
+        {/* Body */}
+        <Container className="pb-16">
+          <div
+            className="prose-blog mx-auto max-w-3xl"
+            data-testid="blog-post-content"
+            dangerouslySetInnerHTML={{ __html: post.content_html }}
+          />
+
+          {post.tags && post.tags.length > 0 && (
+            <div className="mx-auto mt-10 flex max-w-3xl flex-wrap gap-2">
+              {post.tags.map((t) => (
+                <Link
+                  key={t}
+                  to="/blog"
+                  search={{} as never}
+                  className="rounded-pill border border-ink-20 bg-white px-3 py-1 text-[12px] text-ink hover:bg-cream-2"
+                >
+                  #{t}
+                </Link>
+              ))}
+            </div>
+          )}
+        </Container>
+
+        {/* FAQ — AEO structured */}
+        {post.faq && post.faq.length > 0 && (
+          <section className="border-t border-ink-10 bg-paper py-16">
+            <Container>
+              <div className="mx-auto max-w-3xl">
+                <Eyebrow>Quick answers</Eyebrow>
+                <h2 className="display-md mt-3">Frequently asked</h2>
+                <dl className="mt-8 divide-y divide-ink-10">
+                  {post.faq.map((f, i) => (
+                    <div key={i} className="py-5">
+                      <dt className="font-display text-[18px] font-semibold">{f.question}</dt>
+                      <dd className="mt-2 text-[15px] text-ink-60">{f.answer}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </Container>
+          </section>
+        )}
+      </article>
+
+      {/* Comments */}
+      <section className="border-t border-ink-10 py-16">
+        <Container>
+          <div className="mx-auto max-w-3xl">
+            <h2 className="display-md inline-flex items-center gap-3">
+              <MessageSquare className="h-6 w-6 text-ink-60" /> Comments ({comments.length})
+            </h2>
+
+            <form onSubmit={onCommentSubmit} className="mt-8 rounded border border-ink-10 bg-white p-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <input
+                  data-testid="comment-name-input"
+                  required minLength={1} maxLength={80}
+                  value={cName} onChange={(e) => setCName(e.target.value)}
+                  placeholder="Your name" className="input"
+                />
+                <input
+                  data-testid="comment-email-input"
+                  required type="email"
+                  value={cEmail} onChange={(e) => setCEmail(e.target.value)}
+                  placeholder="Your email (not shown)" className="input"
+                />
+              </div>
+              <textarea
+                data-testid="comment-body-input"
+                required minLength={2} maxLength={4000}
+                value={cBody} onChange={(e) => setCBody(e.target.value)}
+                rows={4} placeholder="Share your take…"
+                className="input mt-3 resize-y"
+              />
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-[12px] text-ink-60">Be useful. Comments with suspicious links go to moderation.</p>
+                <button
+                  type="submit"
+                  data-testid="comment-submit-btn"
+                  disabled={posting}
+                  className="rounded bg-ink px-5 py-2 text-[13px] font-semibold text-cream hover:bg-ink-2 disabled:opacity-60"
+                >
+                  {posting ? "Posting…" : "Post comment"}
+                </button>
+              </div>
+            </form>
+
+            {comments.length > 0 && (
+              <ul className="mt-8 space-y-6">
+                {comments.map((c) => (
+                  <li key={c.id} className="border-b border-ink-08 pb-5">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-cream-2 text-[11px] font-semibold text-ink">
+                        {c.author_name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-[14px] font-semibold">{c.author_name}</span>
+                      <span className="text-[11px] text-ink-40">· {formatDate(c.created_at)}</span>
+                    </div>
+                    <p className="mt-2 text-[15px] text-ink">{c.body}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Container>
+      </section>
+
+      {/* Related */}
+      {related.length > 0 && (
+        <section className="border-t border-ink-10 bg-paper py-16">
+          <Container>
+            <Eyebrow>Read next</Eyebrow>
+            <h2 className="display-md mt-3">More from the journal</h2>
+            <Reveal>
+              <div className="mt-10 grid gap-y-12 gap-x-10 md:grid-cols-3">
+                {related.slice(0, 3).map((r) => (
+                  <Link
+                    key={r.id}
+                    to="/blog/$slug"
+                    params={{ slug: r.slug }}
+                    data-testid={`blog-related-${r.slug}`}
+                    className="group block"
+                  >
+                    {r.cover_image ? (
+                      <img src={r.cover_image} alt={r.title} className="aspect-[4/3] w-full rounded border border-ink-10 object-cover" />
+                    ) : (
+                      <div className="aspect-[4/3] w-full rounded border border-ink-10 bg-gradient-to-br from-cream-2 to-sand" />
+                    )}
+                    <div className="mt-3 flex items-center gap-2">
+                      {r.category && <Tag tone="ink" size="sm">{r.category}</Tag>}
+                      <span className="eyebrow text-ink-60">{formatDate(r.published_at)}</span>
+                    </div>
+                    <h3 className="mt-2 font-display text-[20px] font-semibold leading-tight group-hover:underline group-hover:decoration-sun-2 group-hover:underline-offset-4">
+                      {r.title}
+                    </h3>
+                    <p className="mt-2 line-clamp-2 text-[14px] text-ink-60">{r.excerpt}</p>
+                  </Link>
+                ))}
+              </div>
+            </Reveal>
+          </Container>
+        </section>
+      )}
+    </main>
+  );
+}

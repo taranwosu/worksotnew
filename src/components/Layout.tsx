@@ -117,7 +117,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: "/how-it-works", label: "How we work", index: "03" },
     { to: "/managed-services", label: "Managed", index: "04" },
     { to: "/pricing", label: "Pricing", index: "05" },
-    { to: "/for-experts", label: "For experts", index: "06" },
+    { to: "/blog", label: "Journal", index: "06" },
+    { to: "/for-experts", label: "For experts", index: "07" },
   ];
 
   const userName =

@@ -41,6 +41,8 @@ import { PoolTasksPage } from "./pages/PoolTasksPage";
 import { PoolTaskDetailPage } from "./pages/PoolTaskDetailPage";
 import { ManagedServicesPage } from "./pages/ManagedServicesPage";
 import { ManagedTalentPage } from "./pages/ManagedTalentPage";
+import { BlogPage } from "./pages/BlogPage";
+import { BlogPostPage } from "./pages/BlogPostPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -96,6 +98,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/portal/tasks/$taskId", component: ClientTaskDetailPage }),
   make("/pool/tasks", PoolTasksPage),
   createRoute({ getParentRoute: () => rootRoute, path: "/pool/tasks/$taskId", component: PoolTaskDetailPage }),
+  make("/blog", BlogPage),
+  createRoute({ getParentRoute: () => rootRoute, path: "/blog/$slug", component: BlogPostPage }),
 ] as const;
 
 const routeTree = rootRoute.addChildren(routes);
