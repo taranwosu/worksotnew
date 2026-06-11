@@ -12,14 +12,17 @@ import {
   adminListDisputes,
   adminListPayouts,
   adminRetryPayout,
+  adminListContactSubmissions,
   type AdminStats,
   type Brief,
   type Dispute,
   type Payout,
+  type ContactSubmission,
 } from "@/lib/api";
 import { DisputeThread } from "@/components/DisputeThread";
 import { AdminVettingPanel } from "@/components/AdminVettingPanel";
 import { AdminManagedPanel } from "@/components/managed/AdminManagedPanel";
+import { AdminLeadsTab } from "@/components/AdminLeadsTab";
 import { Container, Tag, Button } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 import { usePageMeta } from "@/lib/seo";
@@ -50,7 +53,8 @@ export function AdminPage() {
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "payouts" | "vetting" | "managed">("vetting");
+  const [leads, setLeads] = useState<ContactSubmission[]>([]);
+  const [tab, setTab] = useState<"queue" | "all" | "briefs" | "disputes" | "payouts" | "vetting" | "managed" | "leads">("vetting");
   const [loading, setLoading] = useState(true);
   const [openDispute, setOpenDispute] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -65,18 +69,20 @@ export function AdminPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [s, eAll, bs, ds, po] = await Promise.all([
+      const [s, eAll, bs, ds, po, ls] = await Promise.all([
         adminStats(),
         adminListExperts(),
         adminListBriefs(),
         adminListDisputes().catch(() => [] as Dispute[]),
         adminListPayouts().catch(() => [] as Payout[]),
+        adminListContactSubmissions().catch(() => [] as ContactSubmission[]),
       ]);
       setStats(s);
       setExperts(eAll as ApiExpert[]);
       setBriefs(bs);
       setDisputes(ds);
       setPayouts(po);
+      setLeads(ls);
     } finally {
       setLoading(false);
     }
@@ -151,7 +157,7 @@ export function AdminPage() {
         )}
 
         <div className="mt-10 flex gap-2 border-b border-cream/10">
-          {(["vetting", "managed", "queue", "all", "briefs", "disputes", "payouts"] as const).map((t) => (
+          {(["vetting", "managed", "leads", "queue", "all", "briefs", "disputes", "payouts"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -165,6 +171,8 @@ export function AdminPage() {
                 ? "Vetting pipeline"
                 : t === "managed"
                 ? "Managed service"
+                : t === "leads"
+                ? `Leads (${leads.filter((l) => !l.handled).length})`
                 : t === "queue"
                 ? `Legacy vet queue (${unverified.length})`
                 : t === "all"
@@ -184,6 +192,8 @@ export function AdminPage() {
           <div className="mt-8"><AdminVettingPanel /></div>
         ) : tab === "managed" ? (
           <div className="mt-8"><AdminManagedPanel /></div>
+        ) : tab === "leads" ? (
+          <div className="mt-8"><AdminLeadsTab leads={leads} onChanged={load} /></div>
         ) : tab === "briefs" ? (
           <div className="mt-8 overflow-hidden rounded border border-cream/10">
             {briefs.length === 0 ? (

@@ -202,6 +202,28 @@ export async function submitContact(input: ContactInput) {
   });
 }
 
+export type ContactSubmission = {
+  id: string;
+  name: string;
+  email: string;
+  company?: string | null;
+  topic: "general" | "bench" | "apply" | "press" | "managed";
+  message: string;
+  created_at: string;
+  handled: boolean;
+};
+
+export async function adminListContactSubmissions(handled?: boolean) {
+  const qs = handled === undefined ? "" : `?handled=${handled}`;
+  return req<ContactSubmission[]>(`/api/admin/contact-submissions${qs}`);
+}
+
+export async function adminMarkContactHandled(id: string) {
+  return req<{ ok: boolean }>(`/api/admin/contact-submissions/${id}/handled`, {
+    method: "POST",
+  });
+}
+
 // ================= Briefs & Proposals =================
 export type Brief = {
   id: string;

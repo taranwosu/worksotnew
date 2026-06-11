@@ -77,3 +77,10 @@ Add a public, indexable **"Vetting transparency" page** at `/process` showing th
 - `_notify_admins` now accepts `email_subject`/`email_html` passthrough.
 - New managed lead (`/api/contact` topic="managed") and new pool application (`/api/pool/apply`) trigger admin bell notifications (`managed.lead`, `managed.pool_application`) + email via mailer.
 - Verified: bell notifications land for all admins; general contact topics produce none. Emails currently log-only (`[email-disabled]`) until an email provider (Emailit `EMAILIT_API_KEY` + `EMAIL_FROM`) is configured — existing P0.
+
+### Addendum 2026-06-11 (2) — Admin "Leads" tab
+- New `AdminLeadsTab` component (`/app/src/components/AdminLeadsTab.tsx`) wired as a tab in AdminPage (between Managed service and Legacy vet queue) with unhandled-count label.
+- Lists all `contact_submissions` via existing `GET /api/admin/contact-submissions`; topic filter chips (All/Managed/General/Bench/Apply/Press) with per-topic unhandled counts; "Show handled" toggle; per-lead "Reply by email" (mailto with prefilled subject) and "Mark handled" (`POST /api/admin/contact-submissions/{id}/handled`).
+- api.ts: added `ContactSubmission` type, `adminListContactSubmissions`, `adminMarkContactHandled`.
+- Verified via Playwright: tab renders 4 leads, managed filter shows 3, mark-handled drops count to 3 with toast.
+- Lesson: parallel search_replace edits to the SAME file can race (one edit was silently lost); apply multiple edits to one file sequentially or in a single call.
