@@ -90,3 +90,9 @@ Add a public, indexable **"Vetting transparency" page** at `/process` showing th
 - Hardening applied post-report: `_rate_limit(request, "pool-apply")` added to POST /api/pool/apply. Contact topic already Literal-validated (reviewer note was incorrect).
 - Known stale legacy tests (NOT product bugs, deferred): backend_test.py hardcoded seed counts; test_worksoy_payouts.py uses /api/payouts/* instead of /api/me/payouts/*; test_managed_service.py hardcoded managed_client@worksoy.com creds.
 - Report: /app/test_reports/iteration_6.json
+
+### Addendum 2026-06-11 (4) — Deployment readiness (health check PASS)
+- Production deploy had failed: Cloud Build aborted on `yarn install` — kysely@0.29.2 requires Node >=22, container has 20.x (preview unaffected because bun ignores engines). FIX: /app/.yarnrc with `ignore-engines true`. `cd /app/frontend && yarn build` now passes end-to-end.
+- Added `CORS_ORIGINS=*` to backend/.env; server.py hardened: wildcard now uses allow_origin_regex (origin echo) so credentialed requests work in browsers.
+- Replaced bash-style start script in /app/frontend/package.json with `yarn --cwd /app start` / `build`; added `start` script to /app/package.json. Preview backend+frontend verified running after restarts.
+- deployment_agent re-check: status PASS, zero findings. Also added /app/vercel.json earlier for optional Vercel frontend hosting.
