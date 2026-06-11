@@ -72,3 +72,8 @@ Add a public, indexable **"Vetting transparency" page** at `/process` showing th
 - **BUG FIXED**: `VITE_BACKEND_URL` was missing from `/app/frontend/.env` (vite `envDir` points there; root `.env.local` is ignored and held a stale preview URL). All browser API calls were hitting `…/undefined/api/*` → 404. Added `VITE_BACKEND_URL` alongside `REACT_APP_BACKEND_URL` in `/app/frontend/.env`. Keep both in sync on deploy.
 - **Note**: in-memory auth rate limiter (5 attempts/15 min/IP) trips during repeated test logins; restart backend to clear.
 - Tested e2e via curl + Playwright: lead form success, talent apply (signed-out panel, signed-in form, pending card), admin pending list + mark reviewed, pool member routes unaffected.
+
+### Addendum 2026-06-11 — Admin notifications for managed funnel
+- `_notify_admins` now accepts `email_subject`/`email_html` passthrough.
+- New managed lead (`/api/contact` topic="managed") and new pool application (`/api/pool/apply`) trigger admin bell notifications (`managed.lead`, `managed.pool_application`) + email via mailer.
+- Verified: bell notifications land for all admins; general contact topics produce none. Emails currently log-only (`[email-disabled]`) until an email provider (Emailit `EMAILIT_API_KEY` + `EMAIL_FROM`) is configured — existing P0.

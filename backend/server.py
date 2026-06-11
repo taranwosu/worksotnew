@@ -800,6 +800,22 @@ async def submit_contact(payload: ContactIn, request: Request):
     }
     await db.contact_submissions.insert_one(doc)
     log.info("contact_submission topic=%s email=%s", doc["topic"], doc["email"])
+    if doc["topic"] == "managed":
+        who = doc["name"] + (f" · {doc['company']}" if doc["company"] else "")
+        await _notify_admins(
+            "managed.lead",
+            "New managed service lead",
+            body=f"{who} ({doc['email']}) requested a consultation.",
+            entity_id=doc["id"],
+            email_subject=f"WorkSoy managed lead: {who}",
+            email_html=(
+                f"<h2>New managed service lead</h2>"
+                f"<p><strong>{doc['name']}</strong> ({doc['email']})"
+                f"{' — ' + doc['company'] if doc['company'] else ''}</p>"
+                f"<p style='white-space:pre-wrap'>{doc['message']}</p>"
+                f"<p>Review it in the <a href='{APP_BASE_URL}/admin'>admin panel</a>.</p>"
+            ),
+        )
     doc.pop("source_ip", None)
     return ContactSubmission(**doc)
 
@@ -2554,9 +2570,20 @@ async def submit_test_project(payload: TestProjectSubmitIn, user: User = Depends
     return TestProject(**tp)
 
 
-async def _notify_admins(type: str, title: str, body: str, href: str = "/admin", entity_id: Optional[str] = None) -> None:
+async def _notify_admins(
+    type: str,
+    title: str,
+    body: str,
+    href: str = "/admin",
+    entity_id: Optional[str] = None,
+    email_subject: Optional[str] = None,
+    email_html: Optional[str] = None,
+) -> None:
     async for a in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
-        await _notify(a["user_id"], type=type, title=title, body=body, href=href, entity_id=entity_id)
+        await _notify(
+            a["user_id"], type=type, title=title, body=body, href=href,
+            entity_id=entity_id, email_subject=email_subject, email_html=email_html,
+        )
 
 
 # --- Admin endpoints ---
@@ -4643,6 +4670,22 @@ async def pool_apply(payload: PoolApplicationIn, user: User = Depends(get_curren
     await db.pool_applications.insert_one(doc)
     doc.pop("_id", None)
     log.info("pool_application user=%s email=%s", user.user_id, user.email)
+    vetted = "vetted expert — fast-track" if doc["expert_verified"] else "not yet vetted"
+    await _notify_admins(
+        "managed.pool_application",
+        "New managed pool application",
+        body=f"{user.name} ({user.email}) applied to the pool ({vetted}): {payload.skills}",
+        entity_id=doc["id"],
+        email_subject=f"WorkSoy pool application: {user.name}",
+        email_html=(
+            f"<h2>New managed pool application</h2>"
+            f"<p><strong>{user.name}</strong> ({user.email}) — {vetted}</p>"
+            f"<p><strong>Skills:</strong> {payload.skills}</p>"
+            + (f"<p><strong>Rate expectation:</strong> {payload.rate_expectation}</p>" if payload.rate_expectation else "")
+            + (f"<p style='white-space:pre-wrap'>{payload.note}</p>" if payload.note else "")
+            + f"<p>Review it in the <a href='{APP_BASE_URL}/admin'>admin panel</a> (Managed service &rarr; Pool).</p>"
+        ),
+    )
     return doc
 
 
