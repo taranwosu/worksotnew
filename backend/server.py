@@ -138,7 +138,17 @@ client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 app = FastAPI(title="WorkSoy API")
-if CORS_ORIGINS:
+if CORS_ORIGINS == ["*"]:
+    # Wildcard + credentials: a literal "*" header is rejected by browsers for
+    # credentialed requests, so echo the request origin via regex instead.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+elif CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,

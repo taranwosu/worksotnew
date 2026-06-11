@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "cd /app && /root/.bun/bin/bun run vite --host 0.0.0.0 --port 3000"
+    "start": "yarn --cwd /app start",
+    "build": "yarn --cwd /app install && yarn --cwd /app build"
   }
 }
