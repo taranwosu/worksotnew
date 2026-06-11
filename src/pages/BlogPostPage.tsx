@@ -193,11 +193,12 @@ export function BlogPostPage() {
   // Inject an <link rel="alternate" type="application/rss+xml"> tag so
   // browsers + AI agents discover the feed from any post page.
   useEffect(() => {
+    const base = (import.meta.env.VITE_BACKEND_URL as string) || ORIGIN;
     const link = document.createElement("link");
     link.rel = "alternate";
     link.type = "application/rss+xml";
     link.title = "WorkSoy Journal RSS";
-    link.href = `${ORIGIN}/api/blog/rss.xml`;
+    link.href = `${base}/api/blog/rss.xml`;
     link.dataset.blogRss = "1";
     document.head.appendChild(link);
     return () => { link.remove(); };
@@ -282,11 +283,13 @@ export function BlogPostPage() {
 
   return (
     <main className="bg-cream">
-      {/* Reading progress bar — fixed at top */}
+      {/* Reading progress bar — fixed at top. Hidden when the article is
+          shorter than the viewport (no scroll = no need to indicate it). */}
       <div
         aria-hidden
         data-testid="reading-progress-bar"
         className="pointer-events-none fixed left-0 right-0 top-0 z-50 h-[3px] bg-transparent"
+        style={{ opacity: progress > 0 && progress < 1 ? 1 : progress >= 1 ? 0.4 : 0 }}
       >
         <div
           className="h-full bg-sun transition-[width] duration-100 ease-out"

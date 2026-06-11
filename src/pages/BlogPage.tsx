@@ -51,11 +51,12 @@ export function BlogPage() {
   // Discoverable RSS — adds <link rel="alternate" type="application/rss+xml">
   // so browsers, feed readers, and AI agents can find the feed automatically.
   useEffect(() => {
+    const base = (import.meta.env.VITE_BACKEND_URL as string) || "https://worksoy.com";
     const link = document.createElement("link");
     link.rel = "alternate";
     link.type = "application/rss+xml";
     link.title = "WorkSoy Journal RSS";
-    link.href = "https://worksoy.com/api/blog/rss.xml";
+    link.href = `${base}/api/blog/rss.xml`;
     link.dataset.blogRss = "1";
     document.head.appendChild(link);
     return () => { link.remove(); };

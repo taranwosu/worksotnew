@@ -118,3 +118,22 @@ Add a public, indexable **"Vetting transparency" page** at `/process` showing th
 
 ## ENHANCEMENT IDEA (next session)
 Add **"Related expert"** call-out at the bottom of each blog post: pick 1-2 vetted experts matching the post's category/tags and surface them as a card linking to `/experts/{id}` with a "Discuss this with a vetted expert" CTA. Single biggest conversion lever — every long-form essay becomes a funnel into the marketplace.
+
+## Session 2026-06-11 (6) — Blog v1.2 hardening + distribution
+- **Router split**: `/app/backend/routers/blog.py` (factory `register_blog`) — `server.py` back to 5025 LOC.
+- **Bleach 6.2.0**: sanitise_html() on every admin POST/PATCH `content_html`. Strips `<script>`, on* handlers, `javascript:` URLs, `<iframe>`, non-allowlisted tags. Comments bleached with `tags=[]`.
+- **Perf**: list endpoint projects out `content_html` (only detail endpoint returns full body).
+- **Anti-inflation**: view_count `$inc` gated by IP+slug 6h TTL + UA bot heuristic (GPTBot, Spider, Crawl, Lighthouse, Axios suppressed). View-count response value now reflects the post-increment value.
+- **Strict types**: `FaqItem` Pydantic submodel (malformed FAQ → 422). `BlogPostPatch` model — partial-update PATCH semantics.
+- **Rate limit**: newsletter signup uses its own bucket (20/IP/10min) independent of auth.
+- **Funnel**: `GET /api/blog/posts/{slug}/related-experts` + "Want to talk to someone who actually does this?" card on every post — converts long-reads into marketplace briefs.
+- **Cover image upload**: `POST /api/admin/blog/upload-cover` (admin, 8 MB cap, png/jpg/jpeg/webp/gif) → `GET /api/blog/assets/{fid}` (public, immutable cache). Path-traversal-proof regex on fid.
+- **RSS 2.0**: `GET /api/blog/rss.xml` (50 latest, dc:creator + category + RFC-822 pubDate + atom self-link). `<link rel="alternate" type="application/rss+xml">` auto-injected on `/blog` and `/blog/:slug`. Visible "Or subscribe via RSS" link in newsletter section.
+- **Reader UX**: reading-progress bar (fixed top, sun yellow, opacity-aware for short posts), auto-generated **Table of Contents** sidebar (sticky) from H2/H3 with anchor deep-links + `scroll-margin-top`.
+- **Tests**: 53 cases across `test_blog.py` + `test_blog_iter8.py` + `test_blog_iter9.py`. 52/53 backend pass (the 1 "fail" is a preview-env Cloudflare proxy stripping `cache-control: immutable` — verified correct locally on :8001; production worksoy.com unaffected).
+
+### Outstanding (low priority)
+- Auto-save drafts in the editor (every 15s while focused) — saves a refresh-loss class of bugs.
+- Open Graph / Twitter Card per post (currently using site-wide defaults via usePageMeta).
+- Author profile page (`/blog/author/{slug}`) — list all posts by author.
+- Code syntax highlighting inside post bodies (Prism / Shiki client-side).
