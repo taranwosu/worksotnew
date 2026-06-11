@@ -17,3 +17,10 @@ These accounts are seeded on every backend boot via `ensure_admin_seeded()` (env
 - Register a **fresh** client via POST `/api/auth/register` with `role: "client"` to test shortlists + saved searches.
 - Admin login flow is identical: POST `/api/auth/login` then use returned `session_token` as `Authorization: Bearer …`.
 - All 25 seeded experts have `vetting_stage="approved"` and remain visible on `/api/experts`.
+
+## Pool application test accounts (created 2026-06-11)
+- `pooltest1@worksoy.com` / `Passw0rd!2026` — has a `reviewed` pool application
+- `pooltest2@worksoy.com` / `Passw0rd!2026` — has a `pending` pool application (visible in Admin → Managed service → Pool tab)
+
+## Stale credentials
+- `vetexpert1@worksoy.com` / `Passw0rd!` — NO LONGER WORKS post branch-reset (login returns invalid credentials). Register fresh users instead.

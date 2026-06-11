@@ -406,6 +406,16 @@ export function ForExpertsPage() {
                 <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
                   Or email hello@worksoy.com
                 </p>
+                <div className="mt-4">
+                  <LinkButton
+                    to="/managed-talent"
+                    tone="outline"
+                    size="sm"
+                    data-testid="for-experts-managed-pool-link"
+                  >
+                    Prefer steady managed work? Join the pool
+                  </LinkButton>
+                </div>
               </div>
             </div>
           </div>

@@ -115,8 +115,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: "/experts", label: "Network", index: "01" },
     { to: "/process", label: "Vetting", index: "02" },
     { to: "/how-it-works", label: "How we work", index: "03" },
-    { to: "/pricing", label: "Pricing", index: "04" },
-    { to: "/for-experts", label: "For experts", index: "05" },
+    { to: "/managed-services", label: "Managed", index: "04" },
+    { to: "/pricing", label: "Pricing", index: "05" },
+    { to: "/for-experts", label: "For experts", index: "06" },
   ];
 
   const userName =
@@ -554,6 +555,7 @@ function Footer() {
             links={[
               { label: "Browse the network", to: "/experts" },
               { label: "How we work", to: "/how-it-works" },
+              { label: "Managed service", to: "/managed-services" },
               { label: "Pricing", to: "/pricing" },
               { label: "Post a brief", to: "/post-request" },
             ]}
@@ -564,6 +566,7 @@ function Footer() {
             links={[
               { label: "Join the network", to: "/for-experts" },
               { label: "Apply to practice", to: "/onboarding/expert" },
+              { label: "Join the managed pool", to: "/managed-talent" },
               { label: "Rate benchmarks", to: "/pricing" },
               { label: "Field notes", to: "/how-it-works" },
             ]}

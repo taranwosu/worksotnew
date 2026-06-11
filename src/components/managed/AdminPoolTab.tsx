@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, UserPlus, Star, ChevronRight, X } from "lucide-react";
+import { Loader2, UserPlus, Star, ChevronRight, X, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import {
   adminListPool,
@@ -7,8 +7,11 @@ import {
   adminAddPoolMember,
   adminUpdatePoolMember,
   adminSetPoolMemberStatus,
+  adminListPoolApplications,
+  adminSetPoolApplicationStatus,
   type PoolMemberRow,
   type EligibleExpert,
+  type PoolApplication,
 } from "@/lib/api";
 import { Button, Tag } from "@/components/primitives";
 import { cn } from "@/lib/utils";
@@ -46,6 +49,8 @@ export function AdminPoolTab() {
 
       {adding && <EligiblePicker onAdded={() => { setAdding(false); load(); }} />}
 
+      <PoolApplicationsSection />
+
       <div className="mt-5 space-y-3">
         {rows.length === 0 ? (
           <div className="rounded border border-cream/10 p-8 text-center text-[13px] text-cream/60">
@@ -61,6 +66,91 @@ export function AdminPoolTab() {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function PoolApplicationsSection() {
+  const [apps, setApps] = useState<PoolApplication[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = () =>
+    adminListPoolApplications("pending").then(setApps).catch(() => setApps([]));
+  useEffect(() => { load(); }, []);
+
+  if (!apps || apps.length === 0) return null;
+
+  const act = async (id: string, status: "reviewed" | "dismissed") => {
+    setBusyId(id);
+    try {
+      await adminSetPoolApplicationStatus(id, status);
+      toast.success(status === "reviewed" ? "Marked reviewed" : "Dismissed");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mt-5 rounded border border-sun/40 bg-sun/5 p-5" data-testid="pool-applications-section">
+      <p className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-cream/70">
+        <Inbox className="h-3.5 w-3.5 text-sun" />
+        {apps.length} pending pool application{apps.length === 1 ? "" : "s"} — from /managed-talent
+      </p>
+      <div className="mt-3 space-y-2">
+        {apps.map((a) => (
+          <div
+            key={a.id}
+            className="rounded border border-cream/10 bg-ink-2 px-4 py-3"
+            data-testid={`pool-application-${a.id}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-semibold text-cream">
+                  {a.name} <span className="font-normal text-cream/60">· {a.email}</span>
+                </p>
+                <p className="mt-0.5 text-[12px] text-cream/70">
+                  {a.skills}
+                  {a.rate_expectation ? ` · wants ${a.rate_expectation}` : ""}
+                </p>
+                {a.note && <p className="mt-1 text-[11.5px] text-cream/50">{a.note}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                {a.expert_verified ? (
+                  <Tag tone="moss" size="sm">Vetted expert</Tag>
+                ) : a.expert_id ? (
+                  <Tag tone="sun" size="sm">Expert (unvetted)</Tag>
+                ) : (
+                  <Tag tone="rust" size="sm">No expert profile</Tag>
+                )}
+                <Button
+                  tone="sun"
+                  size="sm"
+                  disabled={busyId === a.id}
+                  onClick={() => act(a.id, "reviewed")}
+                  data-testid={`pool-app-review-${a.id}`}
+                >
+                  Mark reviewed
+                </Button>
+                <Button
+                  tone="outline"
+                  size="sm"
+                  disabled={busyId === a.id}
+                  onClick={() => act(a.id, "dismissed")}
+                  data-testid={`pool-app-dismiss-${a.id}`}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11.5px] text-cream/50">
+        Vetted experts can be added directly via "Add from vetted experts" above. Unvetted applicants go through standard expert vetting first.
+      </p>
     </div>
   );
 }

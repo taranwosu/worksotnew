@@ -308,7 +308,7 @@ class ContactIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     company: Optional[str] = Field(default=None, max_length=120)
-    topic: Literal["general", "bench", "apply", "press"] = "general"
+    topic: Literal["general", "bench", "apply", "press", "managed"] = "general"
     message: str = Field(min_length=10, max_length=5000)
 
 
@@ -3540,6 +3540,16 @@ class ManagedPoolStatusIn(BaseModel):
     status: Literal["active", "suspended", "removed"]
 
 
+class PoolApplicationIn(BaseModel):
+    skills: str = Field(min_length=2, max_length=500)
+    rate_expectation: Optional[str] = Field(default=None, max_length=120)
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PoolApplicationStatusIn(BaseModel):
+    status: Literal["pending", "reviewed", "dismissed"]
+
+
 class ManagedClientCreateIn(BaseModel):
     owner_email: EmailStr
     company_name: str = Field(min_length=2, max_length=140)
@@ -3820,6 +3830,24 @@ async def admin_list_pool_eligible(_: User = Depends(require_admin)):
          "hourlyRate": 1, "image": 1, "rating": 1, "reviewCount": 1},
     ).sort("rating", -1).to_list(length=500)
     return docs
+
+
+@app.get("/api/admin/managed/pool/applications")
+async def admin_list_pool_applications(status: Optional[str] = None, _: User = Depends(require_admin)):
+    q: dict = {"status": status} if status else {}
+    return await db.pool_applications.find(q, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+
+
+@app.post("/api/admin/managed/pool/applications/{app_id}/status")
+async def admin_set_pool_application_status(
+    app_id: str, payload: PoolApplicationStatusIn, _: User = Depends(require_admin)
+):
+    r = await db.pool_applications.update_one(
+        {"id": app_id}, {"$set": {"status": payload.status, "updated_at": _now()}}
+    )
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return await db.pool_applications.find_one({"id": app_id}, {"_id": 0})
 
 
 @app.post("/api/admin/managed/pool")
@@ -4570,6 +4598,52 @@ async def pool_me(request: Request):
     m.pop("performance_score", None)
     m.pop("performance_count", None)
     return m
+
+
+@app.get("/api/pool/my-application")
+async def pool_my_application(request: Request):
+    """Quiet check — returns the caller's most recent pool application or null."""
+    user = await _resolve_user_optional(request)
+    if not user:
+        return None
+    return await db.pool_applications.find_one(
+        {"user_id": user.user_id}, {"_id": 0}, sort=[("created_at", -1)]
+    )
+
+
+@app.post("/api/pool/apply")
+async def pool_apply(payload: PoolApplicationIn, user: User = Depends(get_current_user)):
+    member = await db.pool_members.find_one(
+        {"user_id": user.user_id, "status": {"$in": ["active", "suspended"]}}, {"_id": 0, "id": 1}
+    )
+    if member:
+        raise HTTPException(status_code=400, detail="You are already in the managed pool")
+    pending = await db.pool_applications.find_one(
+        {"user_id": user.user_id, "status": "pending"}, {"_id": 0, "id": 1}
+    )
+    if pending:
+        raise HTTPException(status_code=400, detail="You already have a pending pool application")
+    expert = await db.experts.find_one(
+        {"user_id": user.user_id}, {"_id": 0, "id": 1, "verified": 1}
+    )
+    doc = {
+        "id": f"pa_{uuid.uuid4().hex[:10]}",
+        "user_id": user.user_id,
+        "name": user.name,
+        "email": user.email,
+        "expert_id": expert["id"] if expert else None,
+        "expert_verified": bool(expert and expert.get("verified")),
+        "skills": payload.skills,
+        "rate_expectation": payload.rate_expectation,
+        "note": payload.note,
+        "status": "pending",
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    await db.pool_applications.insert_one(doc)
+    doc.pop("_id", None)
+    log.info("pool_application user=%s email=%s", user.user_id, user.email)
+    return doc
 
 
 def _pool_task_shape(task: dict, company_name: Optional[str]) -> dict:

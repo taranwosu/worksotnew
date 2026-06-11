@@ -191,7 +191,7 @@ export type ContactInput = {
   name: string;
   email: string;
   company?: string;
-  topic: "general" | "bench" | "apply" | "press";
+  topic: "general" | "bench" | "apply" | "press" | "managed";
   message: string;
 };
 
@@ -1141,6 +1141,39 @@ export async function fetchMyManagedBilling() {
 }
 
 // --- Freelancer pool workspace
+export type PoolApplication = {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  expert_id?: string | null;
+  expert_verified: boolean;
+  skills: string;
+  rate_expectation?: string | null;
+  note?: string | null;
+  status: "pending" | "reviewed" | "dismissed";
+  created_at: string;
+};
+export async function fetchMyPoolApplication() {
+  try {
+    return await req<PoolApplication | null>("/api/pool/my-application");
+  } catch {
+    return null;
+  }
+}
+export async function applyToPool(payload: { skills: string; rate_expectation?: string; note?: string }) {
+  return req<PoolApplication>("/api/pool/apply", { method: "POST", body: JSON.stringify(payload) });
+}
+export async function adminListPoolApplications(status?: string) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return req<PoolApplication[]>(`/api/admin/managed/pool/applications${qs}`);
+}
+export async function adminSetPoolApplicationStatus(id: string, status: "pending" | "reviewed" | "dismissed") {
+  return req<PoolApplication>(`/api/admin/managed/pool/applications/${id}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
 export async function fetchMyPoolMembership() {
   try {
     return await req<PoolMember | null>("/api/pool/me");

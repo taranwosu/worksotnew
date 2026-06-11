@@ -39,6 +39,8 @@ import { ClientPortalPage } from "./pages/ClientPortalPage";
 import { ClientTaskDetailPage } from "./pages/ClientTaskDetailPage";
 import { PoolTasksPage } from "./pages/PoolTasksPage";
 import { PoolTaskDetailPage } from "./pages/PoolTaskDetailPage";
+import { ManagedServicesPage } from "./pages/ManagedServicesPage";
+import { ManagedTalentPage } from "./pages/ManagedTalentPage";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -59,6 +61,8 @@ const routes = [
   make("/experts", ExpertsPage),
   createRoute({ getParentRoute: () => rootRoute, path: "/experts/$expertId", component: ExpertDetailPage }),
   make("/how-it-works", HowItWorksPage),
+  make("/managed-services", ManagedServicesPage),
+  make("/managed-talent", ManagedTalentPage),
   make("/pricing", PricingPage),
   make("/for-experts", ForExpertsPage),
   make("/contact", ContactPage),

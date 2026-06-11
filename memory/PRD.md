@@ -60,3 +60,15 @@ Build a premium expert marketplace (Toptal-style) with: browseable expert direct
 
 ## ENHANCEMENT IDEA (next session)
 Add a public, indexable **"Vetting transparency" page** at `/process` showing the 5 stages with real anonymised funnel stats (e.g. "47 of 1,621 applicants passed last quarter"). This is the single highest-leverage SEO + conversion move for a Toptal-style marketplace — Toptal's own "Top 3%" claim is the strongest part of their funnel.
+
+## Session 2026-06-11 — Managed Service marketing funnel
+- **`/managed-services`** marketing landing page (hero, 5-step "how the desk runs", benefits band, retainer vs per-task plan cards, FAQ, consultation lead form). Leads POST to `/api/contact` with new topic `"managed"` (added to `ContactIn` Literal + `ContactInput` TS type); visible via `GET /api/admin/contact-submissions`.
+- **`/managed-talent`** candidate-side page (hero, why-join band, 4-step path in, quality bar, FAQ, auth-aware apply panel):
+  - Signed out → two-ways-in panel (Sign in to opt in `/signin` · New users → standard expert application `/onboarding/expert`).
+  - Signed in → opt-in form → `POST /api/pool/apply` (skills, rate_expectation, note) → `pool_applications` collection. Dup-pending and already-member guarded (400). `GET /api/pool/my-application` quiet check.
+  - Pool member → "You're in the pool" card → `/pool/tasks`.
+- **Admin**: `GET /api/admin/managed/pool/applications[?status=]` + `POST .../{app_id}/status` (pending/reviewed/dismissed). `PoolApplicationsSection` renders pending apps at top of Admin → Managed service → Pool tab with vetted/unvetted tags + review/dismiss actions.
+- **Site wiring**: header nav "04 Managed" → /managed-services; footer "For clients" → Managed service, "For experts" → Join the managed pool; cross-links on ManagedServicesPage (contractor → /managed-talent) and ForExpertsPage CTA (→ /managed-talent).
+- **BUG FIXED**: `VITE_BACKEND_URL` was missing from `/app/frontend/.env` (vite `envDir` points there; root `.env.local` is ignored and held a stale preview URL). All browser API calls were hitting `…/undefined/api/*` → 404. Added `VITE_BACKEND_URL` alongside `REACT_APP_BACKEND_URL` in `/app/frontend/.env`. Keep both in sync on deploy.
+- **Note**: in-memory auth rate limiter (5 attempts/15 min/IP) trips during repeated test logins; restart backend to clear.
+- Tested e2e via curl + Playwright: lead form success, talent apply (signed-out panel, signed-in form, pending card), admin pending list + mark reviewed, pool member routes unaffected.
