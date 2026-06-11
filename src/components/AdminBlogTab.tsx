@@ -302,6 +302,71 @@ function PostEditor({ initial, onClose }: { initial: BlogPost | null; onClose: (
   const [coverUploading, setCoverUploading] = useState(false);
   const coverFileRef = useRef<HTMLInputElement>(null);
 
+  // ── Auto-save (drafts only) ────────────────────────────────────────────
+  // Holds the persisted post id once we've saved at least once. Lets us
+  // promote a "new" draft into a real post mid-edit without leaving the
+  // editor.
+  const [persistedId, setPersistedId] = useState<string | null>(initial?.id ?? null);
+  const [dirty, setDirty] = useState(false);
+  const [autosaving, setAutosaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(initial ? Date.now() : null);
+  const draftRef = useRef(draft);
+  const tagsRef = useRef(tagsInput);
+  const kwRef = useRef(kwInput);
+  draftRef.current = draft;
+  tagsRef.current = tagsInput;
+  kwRef.current = kwInput;
+
+  // Mark the draft dirty whenever anything the user can edit changes.
+  useEffect(() => {
+    setDirty(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, tagsInput, kwInput]);
+
+  const autoSave = async () => {
+    const d = draftRef.current;
+    // Don't auto-save empty drafts (nothing to save) or already-published posts.
+    if (d.status === "published") return;
+    if (!d.title.trim() && !d.content_html.replace(/<[^>]+>/g, "").trim()) return;
+    if (autosaving || saving) return;
+
+    setAutosaving(true);
+    try {
+      const payload: BlogPostInput = {
+        ...d,
+        title: d.title.trim() || "Untitled draft",
+        tags: tagsRef.current.split(",").map((t) => t.trim()).filter(Boolean),
+        keywords: kwRef.current.split(",").map((t) => t.trim()).filter(Boolean),
+        status: "draft",
+      };
+      if (persistedId) {
+        await adminUpdateBlogPost(persistedId, payload);
+      } else {
+        const created = await adminCreateBlogPost(payload);
+        setPersistedId(created.id);
+      }
+      setDirty(false);
+      setLastSavedAt(Date.now());
+    } catch (e) {
+      // Don't toast — autosave failures are silent unless the user manually saves.
+      // eslint-disable-next-line no-console
+      console.warn("autosave failed", e);
+    } finally {
+      setAutosaving(false);
+    }
+  };
+
+  // 15s autosave interval — only fires when dirty AND the tab is visible.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (dirty && document.visibilityState === "visible") {
+        autoSave();
+      }
+    }, 15_000);
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, persistedId, autosaving, saving]);
+
   const onCoverUpload = async (file: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -340,13 +405,16 @@ function PostEditor({ initial, onClose }: { initial: BlogPost | null; onClose: (
         keywords: kwInput.split(",").map((t) => t.trim()).filter(Boolean),
         status: publish !== undefined ? (publish ? "published" : draft.status) : draft.status,
       };
-      if (initial) {
-        await adminUpdateBlogPost(initial.id, payload);
+      if (persistedId) {
+        await adminUpdateBlogPost(persistedId, payload);
         toast.success(publish ? "Published" : "Saved");
       } else {
-        await adminCreateBlogPost(payload);
+        const created = await adminCreateBlogPost(payload);
+        setPersistedId(created.id);
         toast.success(publish ? "Created & published" : "Draft saved");
       }
+      setDirty(false);
+      setLastSavedAt(Date.now());
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");
@@ -404,6 +472,20 @@ function PostEditor({ initial, onClose }: { initial: BlogPost | null; onClose: (
           <h2 className="font-display text-[22px] font-semibold text-cream">{initial?.title || "Untitled draft"}</h2>
         </div>
         <div className="flex items-center gap-2">
+          <span
+            data-testid="admin-blog-autosave-status"
+            className="mr-2 text-[11px] text-cream/50"
+          >
+            {autosaving ? (
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3 animate-pulse" /> Auto-saving…
+              </span>
+            ) : lastSavedAt ? (
+              <RelativeSaved at={lastSavedAt} dirty={dirty} />
+            ) : dirty ? (
+              "Unsaved changes"
+            ) : null}
+          </span>
           <button
             data-testid="admin-blog-save-draft"
             onClick={() => save(false)}
@@ -673,5 +755,27 @@ function PostEditor({ initial, onClose }: { initial: BlogPost | null; onClose: (
         Drafts are not indexable. Publishing adds the post to <code className="font-mono">/api/sitemap.xml</code> and surfaces it for SEO/GEO/AEO crawlers (Google, GPTBot, ClaudeBot, PerplexityBot).
       </div>
     </div>
+  );
+}
+
+/**
+ * Small live-updating "Saved 12s ago" label. Re-renders every 10s while
+ * mounted so the message stays roughly accurate without thrashing.
+ */
+function RelativeSaved({ at, dirty }: { at: number; dirty: boolean }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => force((n) => n + 1), 10_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const seconds = Math.max(1, Math.floor((Date.now() - at) / 1000));
+  let label: string;
+  if (seconds < 60) label = `Saved ${seconds}s ago`;
+  else if (seconds < 3600) label = `Saved ${Math.floor(seconds / 60)}m ago`;
+  else label = `Saved ${Math.floor(seconds / 3600)}h ago`;
+  return (
+    <span className={dirty ? "text-cream/70" : "text-cream/50"}>
+      {dirty ? "Unsaved changes · " : ""}{label}
+    </span>
   );
 }

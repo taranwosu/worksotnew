@@ -6,6 +6,7 @@ from `server.py` (no circular imports).
 """
 from __future__ import annotations
 
+import io
 import os
 import re
 import time
@@ -14,9 +15,11 @@ from pathlib import Path
 from typing import Any, Optional, List, Literal
 
 import bleach
+import httpx
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel, EmailStr, Field
+from PIL import Image, ImageDraw, ImageFont
 
 
 # =========================================================================
@@ -26,6 +29,55 @@ BLOG_ASSETS_DIR = Path(os.environ.get("BLOG_ASSETS_DIR", "/app/backend/uploads/b
 BLOG_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_COVER_BYTES = 8 * 1024 * 1024  # 8 MB
+
+# OG-image cache (avoid re-rendering the same slug+title on every share preview).
+OG_CACHE_DIR = Path("/tmp/worksoy-og")
+OG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _author_slug(name: str) -> str:
+    s = (name or "").lower().strip()
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s[:80] or "anonymous"
+
+
+def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Best-effort load of a system serif/sans font. Falls back to PIL default."""
+    candidates = [
+        # Common locations on Debian/Ubuntu containers.
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold
+        else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold
+        else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size=size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
+    """Greedy word-wrap to fit max_width pixels."""
+    words = (text or "").split()
+    lines: List[str] = []
+    line: List[str] = []
+    for w in words:
+        trial = " ".join(line + [w])
+        if draw.textlength(trial, font=font) <= max_width:
+            line.append(w)
+        else:
+            if line:
+                lines.append(" ".join(line))
+            line = [w]
+    if line:
+        lines.append(" ".join(line))
+    return lines
 
 
 # =========================================================================
@@ -209,6 +261,7 @@ class AiMetaIn(BaseModel):
 
 def _post_summary(doc: dict) -> dict:
     """List-shape: no content_html (perf)."""
+    author_name = doc.get("author_name") or "WorkSoy Editorial"
     return {
         "id": doc["id"],
         "title": doc["title"],
@@ -218,7 +271,8 @@ def _post_summary(doc: dict) -> dict:
         "category": doc.get("category"),
         "tags": doc.get("tags") or [],
         "status": doc.get("status", "draft"),
-        "author_name": doc.get("author_name") or "WorkSoy Editorial",
+        "author_name": author_name,
+        "author_slug": _author_slug(author_name),
         "author_picture": doc.get("author_picture"),
         "reading_time_min": doc.get("reading_time_min", 1),
         "view_count": doc.get("view_count", 0),
@@ -320,6 +374,188 @@ def register_blog(
             path,
             headers={"Cache-Control": "public, max-age=604800, immutable"},
         )
+
+    # ---- Open Graph image (1200x630 PNG, per post, cached) ----
+    @router.get("/api/blog/og/{slug}.png")
+    async def blog_og_image(slug: str):
+        post = await db.blog_posts.find_one(
+            {"slug": slug, "status": "published"},
+            {
+                "_id": 0, "title": 1, "category": 1, "author_name": 1,
+                "reading_time_min": 1, "cover_image": 1, "updated_at": 1, "id": 1,
+            },
+        )
+        if not post:
+            raise HTTPException(404, "Post not found")
+
+        # Cache by post id + updated_at so re-renders happen only on real edits.
+        cache_key = f"{post['id']}_{(post.get('updated_at') or '')[:19].replace(':','-')}.png"
+        cache_path = OG_CACHE_DIR / cache_key
+        if cache_path.exists():
+            return FileResponse(
+                cache_path,
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=604800, immutable"},
+            )
+
+        # WorkSoy brand: cream background, ink text, sun accent.
+        W, H = 1200, 630
+        CREAM = (250, 245, 235)
+        INK = (24, 23, 21)
+        INK_60 = (24, 23, 21, 153)
+        SUN = (255, 196, 0)
+        PAPER = (245, 240, 228)
+
+        img = Image.new("RGB", (W, H), CREAM)
+        draw = ImageDraw.Draw(img, "RGBA")
+
+        # Cover image (right ~40% of canvas) — fetched once, masked.
+        cover_url = (post.get("cover_image") or "").strip()
+        cover_pasted = False
+        if cover_url:
+            try:
+                target_url = cover_url
+                # Resolve relative /api/blog/assets/... URLs against APP_BASE_URL.
+                if target_url.startswith("/"):
+                    target_url = f"{APP_BASE_URL}{target_url}"
+                async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as client:
+                    r = await client.get(target_url)
+                    if r.status_code == 200 and r.headers.get("content-type", "").startswith("image/"):
+                        cover = Image.open(io.BytesIO(r.content)).convert("RGB")
+                        cw, ch = 460, H
+                        cover = cover.resize((cw, ch), Image.LANCZOS)
+                        img.paste(cover, (W - cw, 0))
+                        # Cream-tinted gradient overlay on the left edge for legibility.
+                        overlay = Image.new("RGBA", (200, ch), (250, 245, 235, 0))
+                        for x in range(200):
+                            alpha = int(255 * (1 - x / 200))
+                            for y in range(0, ch, 1):
+                                overlay.putpixel((x, y), (250, 245, 235, alpha))
+                        img.paste(overlay, (W - cw, 0), overlay)
+                        cover_pasted = True
+            except Exception:
+                log.warning("OG cover fetch failed for %s", slug, exc_info=False)
+
+        # Top brand strip
+        draw.rectangle([(0, 0), (W, 8)], fill=SUN)
+
+        # Logo + wordmark (top-left)
+        draw.ellipse([(56, 48), (96, 88)], fill=SUN)
+        draw.ellipse([(72, 64), (88, 80)], fill=INK)
+        wm_font = _load_font(28, bold=True)
+        draw.text((108, 52), "worksoy.", font=wm_font, fill=INK)
+
+        # Category eyebrow
+        eyebrow_font = _load_font(18, bold=True)
+        eyebrow = (post.get("category") or "Journal").upper()
+        draw.text((60, 160), f"{eyebrow}  ·  THE WORKSOY JOURNAL", font=eyebrow_font, fill=INK)
+
+        # Title — large display, wrapped to ~700px so it stays clear of cover.
+        title = (post.get("title") or "").strip()
+        text_width = (W - 120 - (460 if cover_pasted else 0)) + 40
+        # Try descending sizes until we fit in ~5 lines.
+        title_lines: List[str] = []
+        title_font = _load_font(58, bold=True)
+        for size in (62, 58, 54, 50, 46, 42, 38):
+            f = _load_font(size, bold=True)
+            wrapped = _wrap_text(draw, title, f, text_width)
+            if len(wrapped) <= 5:
+                title_font = f
+                title_lines = wrapped
+                break
+        if not title_lines:
+            title_lines = _wrap_text(draw, title, title_font, text_width)[:5]
+        y = 210
+        ascent, descent = title_font.getmetrics()
+        line_height = int((ascent + descent) * 1.1)
+        for line in title_lines:
+            draw.text((60, y), line, font=title_font, fill=INK)
+            y += line_height
+
+        # Footer row: author + reading time + URL
+        footer_font = _load_font(20)
+        author = post.get("author_name") or "WorkSoy Editorial"
+        reading = f"{post.get('reading_time_min', 1)} min read"
+        footer_left = f"{author}   ·   {reading}"
+        draw.text((60, H - 70), footer_left, font=footer_font, fill=INK_60[:3])
+        url_font = _load_font(18, bold=True)
+        url_text = f"worksoy.com/blog/{slug[:48]}"
+        draw.text((60, H - 40), url_text, font=url_font, fill=INK)
+
+        # Save to cache (best-effort)
+        try:
+            img.save(cache_path, "PNG", optimize=True)
+            return FileResponse(
+                cache_path,
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=604800, immutable"},
+            )
+        except Exception:
+            buf = io.BytesIO()
+            img.save(buf, "PNG", optimize=True)
+            return Response(
+                content=buf.getvalue(),
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=604800, immutable"},
+            )
+
+    # ---- Authors (public profile + post list) ----
+    @router.get("/api/blog/authors/{author_slug}")
+    async def blog_author(author_slug: str):
+        # Find any published post whose author resolves to this slug, then
+        # collect all of their posts. We slugify on the fly so admins don't
+        # need to remember stable IDs.
+        cur = db.blog_posts.find(
+            {"status": "published"},
+            {"_id": 0, "content_html": 0},
+        ).sort("published_at", -1)
+        all_posts = await cur.to_list(length=500)
+        matches = [p for p in all_posts if _author_slug(p.get("author_name") or "") == author_slug]
+        if not matches:
+            raise HTTPException(404, "Author not found")
+        # Aggregate stats from the matched set.
+        total_views = sum(p.get("view_count", 0) for p in matches)
+        categories = sorted({p["category"] for p in matches if p.get("category")})
+        first = matches[0]
+        author = {
+            "slug": author_slug,
+            "name": first.get("author_name") or "WorkSoy Editorial",
+            "picture": first.get("author_picture"),
+            "post_count": len(matches),
+            "total_views": total_views,
+            "categories": categories,
+            "first_published_at": min(
+                (p.get("published_at") for p in matches if p.get("published_at")),
+                default=None,
+            ),
+            "latest_published_at": max(
+                (p.get("published_at") for p in matches if p.get("published_at")),
+                default=None,
+            ),
+        }
+        return {
+            "author": author,
+            "posts": [_post_summary(p) for p in matches],
+        }
+
+    @router.get("/api/blog/authors")
+    async def blog_authors_list():
+        cur = db.blog_posts.find(
+            {"status": "published"},
+            {"_id": 0, "author_name": 1, "author_picture": 1, "view_count": 1},
+        )
+        rows = await cur.to_list(length=2000)
+        agg: dict[str, dict] = {}
+        for r in rows:
+            name = r.get("author_name") or "WorkSoy Editorial"
+            slug = _author_slug(name)
+            cell = agg.setdefault(
+                slug,
+                {"slug": slug, "name": name, "picture": r.get("author_picture"), "post_count": 0, "total_views": 0},
+            )
+            cell["post_count"] += 1
+            cell["total_views"] += r.get("view_count", 0) or 0
+        return sorted(agg.values(), key=lambda x: x["post_count"], reverse=True)
 
     # ---- Public ----
     @router.get("/api/blog/posts")

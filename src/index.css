@@ -442,8 +442,13 @@
     background: transparent;
     border: 0;
     padding: 0;
-    color: inherit;
     font-size: inherit;
+  }
+  /* Let highlight.js github-dark theme paint code-block tokens, but keep
+     non-highlighted code blocks readable on the dark <pre> background. */
+  .prose-blog pre code:not(.hljs),
+  .prose-editor pre code:not(.hljs) {
+    color: var(--color-cream);
   }
   .prose-blog img, .prose-editor img {
     max-width: 100%;

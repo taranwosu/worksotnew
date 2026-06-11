@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useNavigate } from "@tanstack/react-router";
 import { Clock, ArrowLeft, MessageSquare, Share2, Sparkles, ChevronRight, Star, ArrowUpRight, List } from "lucide-react";
+import hljs from "highlight.js/lib/common";
+import "highlight.js/styles/github-dark.css";
 import { getBlogPost, postBlogComment, getRelatedExperts, type BlogPostDetail, type RelatedExpert } from "@/lib/blog";
 import { usePageMeta } from "@/lib/seo";
 import { Container, Eyebrow, Tag, Reveal } from "@/components/primitives";
@@ -127,6 +129,23 @@ export function BlogPostPage() {
     [data?.post.id, data?.post.content_html], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // Syntax-highlight every <pre><code> inside the rendered article — handled
+  // after the body HTML is injected so highlight.js sees the real DOM nodes.
+  useEffect(() => {
+    if (!articleRef.current || !bodyHtml) return;
+    const blocks = articleRef.current.querySelectorAll<HTMLElement>("pre code");
+    blocks.forEach((el) => {
+      // Skip already-highlighted blocks (StrictMode + rapid re-renders).
+      if (el.dataset.highlighted === "yes") return;
+      try {
+        hljs.highlightElement(el);
+        el.dataset.highlighted = "yes";
+      } catch {
+        /* never throw on user content */
+      }
+    });
+  }, [bodyHtml]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -145,8 +164,18 @@ export function BlogPostPage() {
     title: data?.post.seo_title || data?.post.title || "Journal",
     description: data?.post.seo_description || data?.post.excerpt,
     path: `/blog/${slug}`,
-    image: data?.post.cover_image || undefined,
+    image: data
+      ? `${(import.meta.env.VITE_BACKEND_URL as string) || ORIGIN}/api/blog/og/${data.post.slug}.png`
+      : undefined,
   });
+
+  // Override og:type to "article" for blog posts (BlogPosting JSON-LD covers
+  // the rest; this is for Open Graph parsers that don't read JSON-LD).
+  useEffect(() => {
+    if (!data) return;
+    const m = document.querySelector<HTMLMetaElement>('meta[property="og:type"]');
+    if (m) m.setAttribute("content", "article");
+  }, [data]);
 
   // Inject JSON-LD structured data
   useEffect(() => {
@@ -328,7 +357,18 @@ export function BlogPostPage() {
                     {post.author_name.charAt(0)}
                   </div>
                   <div>
-                    <div className="text-[14px] font-semibold">{post.author_name}</div>
+                    {post.author_slug ? (
+                      <Link
+                        to="/blog/author/$authorSlug"
+                        params={{ authorSlug: post.author_slug }}
+                        data-testid="blog-author-link"
+                        className="text-[14px] font-semibold hover:underline hover:decoration-sun-2 hover:underline-offset-4"
+                      >
+                        {post.author_name}
+                      </Link>
+                    ) : (
+                      <div className="text-[14px] font-semibold">{post.author_name}</div>
+                    )}
                     <div className="text-[12px] text-ink-60">WorkSoy Editorial</div>
                   </div>
                 </div>

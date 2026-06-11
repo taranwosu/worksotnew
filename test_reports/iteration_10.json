@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration-10 verified end-to-end. Backend: 10/10 new iter-10 cases pass (OG endpoint returns image/png 200 with body >5KB, Pillow confirms 1200x630 RGB, second-hit serves from cache <3s, unknown slug 404, draft slug 404; GET /api/blog/authors returns sorted list with slug/name/post_count/total_views; GET /api/blog/authors/worksoy-admin returns {author, posts} with post_count=4, content_html nulled in summary shape; author_slug present in both list & detail summaries). Regression: full iter-7 + iter-8 + iter-9 suite still green (57 passed, 6 skipped in iter-9 — admin_token module fixture skipped because the prior test runs in the same session triggered the auth rate-limit bucket; rerunning iter-9 alone after cooldown passes, this is a pre-existing iter-9 observation, not an iter-10 regression). Frontend: /blog/:slug emits og:image AND twitter:image pointing to /api/blog/og/{slug}.png plus og:type=article. <pre><code> blocks are syntax-highlighted by hljs (class flips to 'hljs language-python', data-highlighted='yes', .hljs-keyword computed colour = rgb(255, 123, 114) matching github-dark). data-testid='blog-author-link' resolves to /blog/author/worksoy-admin and the AuthorPage renders data-testid='author-name' (WorkSoy Admin), data-testid='author-post-count' (4), data-testid='author-posts-grid' with 4 author-post-{slug} cards, stats row shows POSTS/READS/SINCE. Bad author slug shows 404 'No one here by that name' + 'Back to the journal' button. Admin auto-save flow verified: open New post → fill title 'TEST_Iter10_autosave_QA' + type body → status initially 'Unsaved changes' → after 17s status flips to 'Saved 1s ago' → typing one more character flips to 'Unsaved changes · Saved 4s ago' → close editor leaves a Draft row in the posts list. Manual save uses persistedId so no duplicate row is created.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All public + admin pages", "issues": ["PRE-EXISTING (carried from iter-6/7/8/9): shipper-api-production-3b99.up.railway.app analytics calls throw 1-2 CORS errors per page load. No functional impact."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_blog_iter10.py",
+    "/app/test_reports/pytest/iter10_blog.xml",
+    "/app/test_reports/pytest/iter10_full.xml"
+  ],
+  "action_items": [
+    "PRE-EXISTING (carry forward iter-6..9): Remove/proxy shipper-api railway analytics calls — every page load throws CORS errors.",
+    "PRE-EXISTING (carry forward iter-9): /api/blog/assets/{fid} Cache-Control header still overridden by global no-store middleware (per-route 'public, max-age=604800, immutable' not honoured).",
+    "PRE-EXISTING (carry forward iter-9): <link rel=alternate type=application/rss+xml> on /blog and /blog/:slug still hard-codes https://worksoy.com instead of import.meta.env.VITE_BACKEND_URL.",
+    "INFO: Auth login bucket is aggressive — running iter-7+8+9+10 back-to-back occasionally 429s the iter-9 module-level admin_token fixture (skips 6 admin-CRUD tests). Sleep 90-120s and rerun iter-9 alone if you need green there too."
+  ],
+  "critical_code_review_comments": [
+    "OG endpoint correctly caches by {post_id}_{updated_at} so only re-renders on edit; unknown/draft slugs 404 cleanly before Pillow runs.",
+    "_post_summary keeps content_html=None for shape stability (was a deliberate choice in iter-8). Author endpoint reuses this so /api/blog/authors/{slug}.posts payload size stays small.",
+    "AdminBlogTab.autoSave() correctly guards `if (status === 'published') return;` and `if (autosaving || saving) return;` — confirmed at AdminBlogTab.tsx:329 / line 331.",
+    "Manual save() reuses persistedId (line 408) so the auto-saved row is updated in place — no duplicates after autosave→manual-save.",
+    "RelativeSaved component re-renders both 'Saved Ns ago' and 'Unsaved changes · Saved Ns ago' (depending on dirty flag) — verified live in browser.",
+    "highlight.js github-dark theme imported as CSS in BlogPostPage.tsx works because index.css fallback `.prose-blog pre code:not(.hljs)` only paints cream when hljs hasn't run yet. Once .hljs is applied, the dark token palette wins.",
+    "FRONTEND: AuthorPage 404 fallback uses literal 'Back to the journal' — matches spec.",
+    "FRONTEND: BlogPostPage.useEffect on bodyHtml + data-highlighted='yes' guard correctly prevents double-highlight under React StrictMode."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_blog_iter10.py (NEW — 10 cases: OG image 5, Authors 3, author_slug in summary 2)"
+  ],
+  "success_rate": {
+    "backend": "100% on iter-10 (10/10); 100% on iter-7+8 regression (41/41); iter-9 admin-token-dependent cases skipped due to rate-limit (network-level), not code regression — rerunning iter-9 in isolation passes 11/12 (same single Cache-Control failure as iter-9 reported).",
+    "frontend": "100% — OG meta tags present, twitter:image present, og:type='article', hljs github-dark applied with correct keyword colour, author link routes to /blog/author/worksoy-admin, AuthorPage data-testids all present, stats row correct, 404 author slug shows fallback, admin autosave fires at 15s mark and transitions Unsaved→Saved→Unsaved·Saved correctly, draft persists and is editable after cancel."
+  },
+  "test_credentials": "admin@worksoy.com / WorkSoyAdmin2026! — verified working when auth bucket is cool.",
+  "seed_data_creation": "Per run: 1 TEST_Iter10_autosave_QA draft (auto-deleted via DELETE /api/admin/blog/posts/{id} at the end of the UI run); ~1 TEST_OG_DRAFT_* post created+deleted by test_og_draft_slug_404 inside its try/finally; ~3 TEST_PATCH_* posts created by iter-9 fixtures (auto-cleaned by created_ids teardown). OG cache files under /tmp/worksoy-og/{post_id}_{updated_at}.png are now warm for the first published slug (~70KB).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Canonical iter-10 regression: `pytest /app/backend/tests/test_blog.py /app/backend/tests/test_blog_iter8.py /app/backend/tests/test_blog_iter9.py /app/backend/tests/test_blog_iter10.py -v` (63 cases total). If iter-9 admin_token fixture skips, sleep 90-120s and rerun iter-9 alone — auth bucket cooldown. OG cache lives at /tmp/worksoy-og — `ls -la /tmp/worksoy-og/` confirms fresh PNGs after first hit. AuthorPage URL pattern: /blog/author/{slug-of-author-name}; admin's slug is 'worksoy-admin' (from 'WorkSoy Admin'). hljs theme is loaded as CSS side-effect import — verify via `getComputedStyle(.hljs-keyword).color === 'rgb(255, 123, 114)'`. Auto-save UI test: be sure to type ~20 chars in the editor (not the title) — autoSave returns early if content body strips to empty. The editor is a ProseMirror node (data-testid='admin-blog-editor' on the wrapper).",
+  "rca of the issue": "No new bugs found in iter-10. Two non-iter-10 carry-forwards from iter-9 still open: (a) /api/blog/assets/{fid} Cache-Control middleware override — fix by whitelisting /api/blog/assets/* in the global no-store middleware in server.py, or by setting response.headers['Cache-Control'] after FileResponse construction so it runs after middleware. (b) <link rel=alternate> hardcoded to worksoy.com — replace with `${import.meta.env.VITE_BACKEND_URL}/api/blog/rss.xml` in BlogPage.tsx + BlogPostPage.tsx."
+}

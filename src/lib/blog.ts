@@ -32,6 +32,7 @@ export type BlogPost = {
   tags: string[];
   status: "draft" | "published";
   author_name: string;
+  author_slug?: string;
   author_picture: string | null;
   reading_time_min: number;
   view_count: number;
@@ -98,6 +99,25 @@ export async function listBlogPosts(params: { q?: string; category?: string; tag
   if (params.skip) qs.set("skip", String(params.skip));
   return req<{ posts: BlogPost[]; total: number }>(`/api/blog/posts?${qs.toString()}`);
 }
+export type AuthorProfile = {
+  slug: string;
+  name: string;
+  picture: string | null;
+  post_count: number;
+  total_views: number;
+  categories: string[];
+  first_published_at: string | null;
+  latest_published_at: string | null;
+};
+
+export async function getAuthor(slug: string) {
+  return req<{ author: AuthorProfile; posts: BlogPost[] }>(`/api/blog/authors/${slug}`);
+}
+
+export async function listAuthors() {
+  return req<Array<Pick<AuthorProfile, "slug" | "name" | "picture" | "post_count" | "total_views">>>(`/api/blog/authors`);
+}
+
 export async function getBlogPost(slug: string) {
   return req<BlogPostDetail>(`/api/blog/posts/${slug}`);
 }
