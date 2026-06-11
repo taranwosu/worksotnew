@@ -87,13 +87,24 @@ class TestPublicSinglePost:
         r = api.get(f"{BASE_URL}/api/blog/posts", timeout=15)
         slug = r.json()["posts"][0]["slug"]
 
-        r1 = api.get(f"{BASE_URL}/api/blog/posts/{slug}", timeout=15)
+        # Use a unique X-Forwarded-For so the iter-8 view-count throttle (6h
+        # per IP+slug) does not suppress the increment from a previous run.
+        headers = {
+            "X-Forwarded-For": f"203.0.113.{uuid.uuid4().int % 255}",
+            "User-Agent": "Mozilla/5.0 (regression-test)",
+        }
+        r1 = api.get(f"{BASE_URL}/api/blog/posts/{slug}", headers=headers, timeout=15)
         assert r1.status_code == 200, r1.text
         d1 = r1.json()
         assert "post" in d1 and "related" in d1 and "comments" in d1
         v1 = d1["post"].get("view_count", 0)
 
-        r2 = api.get(f"{BASE_URL}/api/blog/posts/{slug}", timeout=15)
+        # Different IP -> guaranteed second counted increment.
+        headers2 = {
+            "X-Forwarded-For": f"203.0.113.{uuid.uuid4().int % 255}",
+            "User-Agent": "Mozilla/5.0 (regression-test-2)",
+        }
+        r2 = api.get(f"{BASE_URL}/api/blog/posts/{slug}", headers=headers2, timeout=15)
         v2 = r2.json()["post"].get("view_count", 0)
         assert v2 >= v1 + 1, f"view_count did not increment: {v1} -> {v2}"
         assert isinstance(d1["related"], list)

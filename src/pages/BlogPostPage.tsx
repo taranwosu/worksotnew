@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "@tanstack/react-router";
-import { Clock, ArrowLeft, MessageSquare, Share2, Sparkles, ChevronRight } from "lucide-react";
-import { getBlogPost, postBlogComment, type BlogPostDetail } from "@/lib/blog";
+import { Clock, ArrowLeft, MessageSquare, Share2, Sparkles, ChevronRight, Star, ArrowUpRight } from "lucide-react";
+import { getBlogPost, postBlogComment, getRelatedExperts, type BlogPostDetail, type RelatedExpert } from "@/lib/blog";
 import { usePageMeta } from "@/lib/seo";
 import { Container, Eyebrow, Tag, Reveal } from "@/components/primitives";
 import { toast } from "sonner";
@@ -68,6 +68,7 @@ export function BlogPostPage() {
   const { slug } = useParams({ strict: false }) as { slug: string };
   const navigate = useNavigate();
   const [data, setData] = useState<BlogPostDetail | null>(null);
+  const [relatedExperts, setRelatedExperts] = useState<RelatedExpert[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -85,6 +86,9 @@ export function BlogPostPage() {
       .then((d) => { if (!cancelled) setData(d); })
       .catch(() => { if (!cancelled) setNotFound(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    getRelatedExperts(slug)
+      .then((e) => { if (!cancelled) setRelatedExperts(e); })
+      .catch(() => { /* swallow — section is optional */ });
     return () => { cancelled = true; };
   }, [slug]);
 
@@ -282,6 +286,81 @@ export function BlogPostPage() {
             </div>
           )}
         </Container>
+
+        {/* Related vetted expert — converts long-reads into marketplace funnel */}
+        {relatedExperts.length > 0 && (
+          <section
+            data-testid="related-experts-section"
+            className="border-y border-ink-10 bg-paper py-14"
+          >
+            <Container>
+              <div className="mx-auto max-w-4xl">
+                <div className="grid items-start gap-8 md:grid-cols-12">
+                  <div className="md:col-span-5">
+                    <Sparkles className="h-5 w-5 text-sun-2" />
+                    <h2 className="display-md mt-4">
+                      Want to talk to someone who actually does this?
+                    </h2>
+                    <p className="prose-lede mt-4">
+                      Every WorkSoy expert is gauntlet-vetted. Brief them, get a 48-hour shortlist, sign by Friday.
+                    </p>
+                    <Link
+                      to="/experts"
+                      data-testid="related-experts-browse-all"
+                      className="mt-6 inline-flex items-center gap-2 text-[14px] font-semibold text-ink hover:underline"
+                    >
+                      Browse the full network <ArrowUpRight className="h-4 w-4" />
+                    </Link>
+                  </div>
+                  <div className="md:col-span-7">
+                    <ul className="space-y-3">
+                      {relatedExperts.map((e) => (
+                        <li key={e.id}>
+                          <Link
+                            to="/experts/$expertId"
+                            params={{ expertId: e.id }}
+                            data-testid={`related-expert-${e.id}`}
+                            className="group flex items-center gap-4 rounded border border-ink-10 bg-white p-4 transition-colors hover:border-ink"
+                          >
+                            {e.image ? (
+                              <img
+                                src={e.image}
+                                alt={e.name}
+                                className="h-14 w-14 shrink-0 rounded-full border border-ink-10 object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-cream-2 font-semibold text-ink">
+                                {e.name.charAt(0)}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate font-display text-[16px] font-semibold text-ink">{e.name}</span>
+                                {e.rating > 0 && (
+                                  <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-ink-60">
+                                    <Star className="h-3 w-3 fill-sun text-sun" />
+                                    {e.rating.toFixed(1)}
+                                    {e.reviewCount > 0 && <span className="text-ink-40">· {e.reviewCount}</span>}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="truncate text-[13px] text-ink-60">{e.headline}</div>
+                              <div className="mt-1 flex items-center gap-3 text-[11px] text-ink-40">
+                                <span>{e.category}</span>
+                                {e.hourlyRate > 0 && <span>· ${e.hourlyRate}/hr</span>}
+                              </div>
+                            </div>
+                            <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-40 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-ink" />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </Container>
+          </section>
+        )}
 
         {/* FAQ — AEO structured */}
         {post.faq && post.faq.length > 0 && (

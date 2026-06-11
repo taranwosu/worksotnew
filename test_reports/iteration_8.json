@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration-8 backlog cleanup verified end-to-end. (a) All 25 prior iter-7 blog regression cases still pass after router split into routers/blog.py (one test file edit needed: prior view-count test now uses unique X-Forwarded-For header so it doesn't trip the new 6h throttle). (b) Added 16 NEW iter-8 cases in /app/backend/tests/test_blog_iter8.py covering list-projection (content_html stripped), single-GET still full body, bleach XSS sanitization on POST + PATCH (strips <script>, on*=, javascript:, <iframe>), FAQ strict validation (422 on malformed; persists when valid), view-count throttle (no double-inc same IP+UA; bot UA Googlebot/GPTBot/ClaudeBot suppressed), newsletter rate-limit bucket independence from auth bucket, GET /api/blog/posts/{slug}/related-experts shape + 404, and full router-split URL surface sanity. 41/41 tests pass in 24s. Frontend verified on /blog/the-3-lie-...: 'Want to talk to someone who actually does this?' section renders between article tags and FAQ, 2 expert cards (David Okonkwo, Kwame Osei) with data-testid='related-expert-{id}', Browse-the-full-network link with data-testid='related-experts-browse-all' goes to /experts, clicking a card navigates to /experts/exp_108775aa4a (ExpertDetailPage). All iter-7 regression UI flows still hold (only pre-existing CORS noise from shipper-api railway analytics persists, carried over from iter-6/7).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/admin/blog/posts/{id}", "issue": "Endpoint marks 'title' as required even on PATCH; partial updates that only send content_html return 422. PATCH should accept partial payloads (title optional). Workaround in tests: re-send title with patch. Not breaking but inconsistent with REST PATCH semantics."},
+      {"endpoint": "GET /api/blog/posts/{slug}", "issue": "view_count in response is the PRE-increment value (handler reads doc then $incs after). On a freshly created post the first user sees view_count=0 even though the read counts. Confusing for analytics dashboards. Either return post-increment value (read-modify-write under update_one with returnDocument='after') or document this."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All public + admin pages", "issues": ["PRE-EXISTING (iter-6/7 regression): Third-party analytics requests to shipper-api-production-3b99.up.railway.app fire on every navigation and ALL are blocked by CORS. Generates 4-6 console errors per page. No functional impact but pollutes console. Either drop the integration, fix CORS, or swallow errors silently."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_blog.py",
+    "/app/backend/tests/test_blog_iter8.py",
+    "/app/test_reports/pytest/iter8_blog_regression.xml",
+    "/app/test_reports/pytest/iter8_blog_new.xml",
+    "/app/test_reports/pytest/iter8_combined.xml"
+  ],
+  "action_items": [
+    "MINOR: Make PATCH /api/admin/blog/posts/{id} accept partial payloads (title optional). Currently 422s if title is missing, contradicting standard PATCH semantics.",
+    "MINOR: Single-GET /api/blog/posts/{slug} returns PRE-increment view_count. Consider returning post-increment value, or document this for analytics consumers.",
+    "PRE-EXISTING (carried from iter-6/7): Remove or proxy the shipper-api-production-3b99.up.railway.app analytics calls. Every navigation throws 4-6 console CORS errors."
+  ],
+  "critical_code_review_comments": [
+    "Router split is clean: server.py is back to 5026 LOC (was 5485). routers/blog.py is 710 LOC and self-contained via register_blog(app, db=, require_admin=, _rate_limit=, _now=, EMERGENT_LLM_KEY=, APP_BASE_URL=, log=). No path renames detected.",
+    "sanitize_html() uses a tight bleach allowlist (TipTap StarterKit + Link + Image, protocols restricted to http/https/mailto). All XSS vectors tested (script/onerror/javascript:/iframe) are stripped on both POST and PATCH. Comment bodies are bleached with tags=[] (no HTML at all) — correct.",
+    "View-count throttle is in-process (dict-based) with 6h TTL + soft cap of 50k entries. Bot heuristic matches bot/spider/crawl/preview/fetch/monitor/headlesschrome/phantomjs/lighthouse/axios. Adequate for single-instance; swap to Redis on horizontal scale.",
+    "Newsletter and auth rate-limit buckets are now independent (verified: 6 subscribes do not trip auth login). The bucket key in _rate_limit() takes a distinct name parameter.",
+    "Related-experts endpoint loose-maps blog category -> expert category (Hiring/Vetting -> Operations, Fractional -> Finance, Research -> Strategy) and falls back to top-2 vetted (rating-sorted) when no match. Returns 1-2 items as designed.",
+    "FAQ is now List[FaqItem] (question:str + answer:str). Malformed payload correctly 422s.",
+    "List endpoint /api/blog/posts now projects content_html out (returned as null / absent). Verified — solid perf win for large listings."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_blog.py (one fixture-level edit: TestPublicSinglePost.test_get_existing_post_increments_views now uses unique X-Forwarded-For headers so the iter-8 6h IP+slug throttle does not suppress the increment between runs)",
+    "/app/backend/tests/test_blog_iter8.py (NEW — 16 cases)"
+  ],
+  "success_rate": {
+    "backend": "100% (41/41: 25 iter-7 regression + 16 iter-8 new)",
+    "frontend": "100% on critical paths (related-experts section renders, 2 cards visible, browse-all link correct, card click navigates to /experts/{id}; all prior blog UI flows intact)"
+  },
+  "test_credentials": "admin@worksoy.com / WorkSoyAdmin2026! — verified working.",
+  "seed_data_creation": "Per run: ~4 TEST_ blog posts (auto-deleted by fixture teardown), ~6 TEST_ newsletter subscribers (left in DB but TEST_-prefixed). All admin-side TEST_ posts cleaned up via DELETE in teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Canonical regression for iter-8 blog: `pytest /app/backend/tests/test_blog.py /app/backend/tests/test_blog_iter8.py -v` (41 cases, all green in ~25s; AI tests need EMERGENT_LLM_KEY). Run both files in ONE pytest invocation — running them in separate invocations is also OK. NOTE: view-count tests use unique X-Forwarded-For headers to avoid colliding with the in-process 6h IP+slug throttle. The bot-marker list in routers/blog.py:96 includes 'axios' — anything using axios as UA will not increment view_count; if you need to test view increment from a browser-like client, use a Mozilla/5.0 UA without 'bot/spider/crawl/preview/fetch/monitor/lighthouse'. The related-experts endpoint always returns 0-2 items; 'the-3-lie-...' seeded slug returns exactly 2. Admin PATCH currently requires title field (minor REST issue, not blocking). bleach==6.2.0 is in requirements.txt and sanitize_html() runs server-side on every admin POST/PATCH content_html and on every comment body (tags=[]). All 25 seeded experts are vetting_stage='approved' & verified=True so related-experts always has data.",
+  "rca_of_the_issue": "n/a — iter-8 ships clean. Two minor backend ergonomics nits (PATCH requires title, view_count pre-increment value) are documented but non-breaking. Router split + bleach sanitization + view-count throttle + bucket independence + FAQ strict typing + related-experts endpoint all verified working as designed."
+}

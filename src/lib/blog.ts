@@ -59,6 +59,18 @@ export type BlogPostDetail = {
   comments: BlogComment[];
 };
 
+export type RelatedExpert = {
+  id: string;
+  name: string;
+  headline: string;
+  category: string;
+  specialties: string[];
+  image: string;
+  hourlyRate: number;
+  rating: number;
+  reviewCount: number;
+};
+
 export type BlogPostInput = {
   title: string;
   slug?: string;
@@ -88,6 +100,9 @@ export async function listBlogPosts(params: { q?: string; category?: string; tag
 }
 export async function getBlogPost(slug: string) {
   return req<BlogPostDetail>(`/api/blog/posts/${slug}`);
+}
+export async function getRelatedExperts(slug: string) {
+  return req<RelatedExpert[]>(`/api/blog/posts/${slug}/related-experts`);
 }
 export async function listBlogCategories() {
   return req<Array<{ category: string; count: number }>>(`/api/blog/categories`);
