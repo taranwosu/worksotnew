@@ -96,3 +96,25 @@ Add a public, indexable **"Vetting transparency" page** at `/process` showing th
 - Added `CORS_ORIGINS=*` to backend/.env; server.py hardened: wildcard now uses allow_origin_regex (origin echo) so credentialed requests work in browsers.
 - Replaced bash-style start script in /app/frontend/package.json with `yarn --cwd /app start` / `build`; added `start` script to /app/package.json. Preview backend+frontend verified running after restarts.
 - deployment_agent re-check: status PASS, zero findings. Also added /app/vercel.json earlier for optional Vercel frontend hosting.
+
+## Session 2026-06-11 (5) — Blog / CMS / SEO·GEO·AEO
+- **New surfaces**: public `/blog` (editorial listing, hero + search + category pills + featured + grid + tag cloud + newsletter), public `/blog/:slug` (TL;DR card + body + JSON-LD BlogPosting/Breadcrumb/FAQPage + comment form + related posts), admin `/admin → Blog CMS` tab (3 sub-tabs: Posts, Comments, Subscribers + inline TipTap WYSIWYG editor with SEO/GEO/AEO sidebar).
+- **Backend (server.py)**: 13 new endpoints under `/api/blog/*` (public) + `/api/admin/blog/*` (admin gated). Public: list, single (related + comments + view increment), categories, tags, comment, subscribe. Admin: CRUD posts (auto-slug + uniqueness), CRUD/moderate comments, subscribers list, **AI generate** (Claude Sonnet 4-6 via emergentintegrations + EMERGENT_LLM_KEY — 4 modes: meta, summary, keywords, faq). New `/api/sitemap.xml` (static + every published slug) and `/api/robots.txt` (welcomes GPTBot, ChatGPT-User, ClaudeBot, PerplexityBot, Google-Extended, OAI-SearchBot — explicit GEO + AEO opt-in).
+- **WYSIWYG**: TipTap v3 + StarterKit/Link/Image/Placeholder/Typography. Toolbar (H1-H3, bold/italic/strike/code, lists, blockquote, codeblock, hr, link, image, undo/redo). All buttons + editor have data-testid.
+- **AEO**: per-post TL;DR rendered above the fold; FAQ rendered as `<dl>` plus JSON-LD FAQPage; structured JSON-LD scripts tagged `data-blog-jsonld="1"` for testability.
+- **Brand fit**: ink/cream/sun palette unchanged; editorial display type (Geist) for hero; `prose-blog` + `prose-editor` CSS classes added to /app/src/index.css for consistent reading + editor surface.
+- **Seed**: 3 published posts (3% Lie / Milestone-escrow / Fractional CFO playbook). Admin seeded via ADMIN_PASSWORD env: `admin@worksoy.com / WorkSoyAdmin2026!`.
+- **Tests**: 25/25 backend pytest (`/app/backend/tests/test_blog.py`) including AI for all 4 modes; Playwright UI verified.
+- **Fixes after iter-7**: `_slugify` now treats underscores as separators; `/blog` search now shows matched results in the grid (previously the featured slot ate the single match).
+- **Files added**: `/app/src/lib/blog.ts`, `/app/src/pages/BlogPage.tsx`, `/app/src/pages/BlogPostPage.tsx`, `/app/src/components/AdminBlogTab.tsx`, `/app/src/components/RichEditor.tsx`. Modified: `App.tsx` (2 routes), `Layout.tsx` (Journal nav 06), `AdminPage.tsx` (Blog CMS tab), `index.css` (.prose-blog/.prose-editor), `robots.txt`, `.env` (EMERGENT_LLM_KEY + ADMIN_PASSWORD + APP_BASE_URL).
+
+### Backlog (Blog v1.x)
+- **P1**: Split server.py blog block into `routers/blog.py` + `routers/admin_blog.py` (server.py now 5485 LOC).
+- **P1**: Sanitise admin-submitted HTML server-side (bleach) — TipTap output is trusted client-side but an admin compromise = stored XSS surface.
+- **P2**: Drop full `content_html` from `/api/blog/posts` list payload (only return on detail).
+- **P2**: Gate view_count increments by IP+slug to avoid crawler inflation.
+- **P2**: Type `BlogPostIn.faq` as `List[FaqItem]` Pydantic submodel.
+- **P2**: Separate rate-limit bucket for newsletter signup vs auth.
+
+## ENHANCEMENT IDEA (next session)
+Add **"Related expert"** call-out at the bottom of each blog post: pick 1-2 vetted experts matching the post's category/tags and surface them as a card linking to `/experts/{id}` with a "Discuss this with a vetted expert" CTA. Single biggest conversion lever — every long-form essay becomes a funnel into the marketplace.

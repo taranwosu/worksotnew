@@ -66,8 +66,9 @@ export function BlogPage() {
     return () => { cancelled = true; };
   }, [q, activeCat, activeTag]);
 
-  const featured = useMemo(() => posts[0], [posts]);
-  const rest = useMemo(() => posts.slice(1), [posts]);
+  const isFiltered = Boolean(q || activeCat || activeTag);
+  const featured = useMemo(() => (isFiltered ? null : posts[0]), [posts, isFiltered]);
+  const rest = useMemo(() => (isFiltered ? posts : posts.slice(1)), [posts, isFiltered]);
 
   const onSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();

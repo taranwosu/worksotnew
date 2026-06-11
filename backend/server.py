@@ -4891,7 +4891,7 @@ EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "").strip()
 
 def _slugify(text: str) -> str:
     text = (text or "").lower().strip()
-    text = _re_blog.sub(r"[^a-z0-9\s-]", "", text)
+    text = _re_blog.sub(r"[^a-z0-9\s_-]", "", text)
     text = _re_blog.sub(r"[\s_]+", "-", text)
     text = _re_blog.sub(r"-+", "-", text).strip("-")
     return text[:80] or f"post-{uuid.uuid4().hex[:6]}"
