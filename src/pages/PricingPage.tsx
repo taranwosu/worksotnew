@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Check, Minus } from "lucide-react";
 import {
   Container,
@@ -78,6 +79,41 @@ const plans: Plan[] = [
   },
 ];
 
+const faqs: Array<{ q: string; a: string }> = [
+  {
+    q: "What does the 15% platform fee actually cover?",
+    a: "The fee covers four things: the vetting gauntlet your contractor passed (typically $1,200–$3,000 of work the contractor never sees a bill for), Stripe-escrowed payments with dispute mediation, the counter-signed SOW + IP-assignment template, and a dedicated operations lead who handles re-draws, rate negotiation, and milestone disputes for the life of the engagement.",
+  },
+  {
+    q: "Can I hire the contractor directly after the contract ends?",
+    a: "After 12 months of continuous engagement on WorkSoy, yes — no conversion fee. Inside the 12-month window, you can buy out the contractor at a flat 6× their monthly billable. Most clients don't — the fee covers ongoing replacement guarantees and SOW management that disappear if you go direct.",
+  },
+  {
+    q: "How fast do I see matches after posting a brief?",
+    a: "Access tier: 48-hour shortlist of 3–5 vetted contractors. Practice tier: 24 hours. Bench tier: same-day, often within 4 hours. Every shortlist comes with a written rationale per candidate — not just resumes. If the shortlist misses, we redraw at no extra cost.",
+  },
+  {
+    q: "What if the work doesn't ship or isn't what we agreed?",
+    a: "Every milestone is funded in Stripe escrow before work starts and released only on your acceptance. If a milestone fails, you either request a rework (free, standard 30-day window), dispute it via your operations lead, or refund the milestone in full. Contractors with two unresolved disputes are removed from the roster.",
+  },
+  {
+    q: "Is the 15% fee the same on every plan?",
+    a: "Yes. Access, Practice, and Bench all have the same flat 15% platform fee on contractor billings. What changes between tiers is shortlist SLA, ops-lead dedication, SOW templates, SSO/audit, and onsite activation — never the contractor economics.",
+  },
+  {
+    q: "Do you bill hourly or fixed-price?",
+    a: "Both are supported per milestone, but we strongly recommend fixed-price. Hourly billing punishes senior contractors (the ones you actually want) because it rewards slow. ~83% of WorkSoy engagements ship on fixed milestones held in escrow.",
+  },
+  {
+    q: "Who owns the IP the contractor produces?",
+    a: "You do, automatically. Every counter-signed SOW assigns 100% of work-for-hire IP to the client on milestone acceptance. Pre-existing contractor IP (libraries, frameworks they bring in) stays with them under a non-exclusive perpetual license — standard 2026 industry contract language.",
+  },
+  {
+    q: "Can we pay in something other than USD?",
+    a: "Access and Practice are USD-only today. Bench tier supports invoicing in EUR, GBP, AUD, CAD, and SGD with a 1.2% FX margin disclosed on every invoice. We do not support cryptocurrency settlement.",
+  },
+];
+
 const comparison = [
   {
     section: "Matching",
@@ -120,6 +156,27 @@ export function PricingPage() {
       "A flat 15% platform fee across every tier — no recruiter retainers, no agency markups, no bidding. You pay on milestone acceptance.",
     path: "/pricing",
   });
+
+  // FAQPage JSON-LD — same AEO pattern used on blog posts. Surfaces these
+  // answers directly in Google SERPs + AI assistants (Perplexity, Claude,
+  // ChatGPT-Search) without anyone needing to click through.
+  useEffect(() => {
+    const s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.dataset.pricingFaq = "1";
+    s.text = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    });
+    document.head.appendChild(s);
+    return () => { s.remove(); };
+  }, []);
+
   return (
     <div className="bg-cream">
       {/* Title band */}
@@ -419,12 +476,55 @@ export function PricingPage() {
         </Container>
       </section>
 
+      {/* FAQ — answers procurement objections + powers AEO via JSON-LD */}
+      <section className="border-t border-ink-12 bg-paper py-20 md:py-28" data-testid="pricing-faq">
+        <Container>
+          <div className="grid gap-12 md:grid-cols-12">
+            <div className="md:col-span-4">
+              <Eyebrow index="§ 04" accent>
+                The questions
+              </Eyebrow>
+              <h2 className="mt-4 font-display text-[clamp(2rem,3.5vw,2.75rem)] font-medium leading-[1.05] tracking-[-0.025em] text-ink">
+                Procurement asked,<br />we answered.
+              </h2>
+              <p className="prose-lede mt-5">
+                The eight questions that come up on every renewal call. Save your legal team the email thread.
+              </p>
+            </div>
+            <dl className="md:col-span-8">
+              {faqs.map((f, i) => (
+                <details
+                  key={f.q}
+                  data-testid={`pricing-faq-${i}`}
+                  className="group border-b border-ink-12 py-5 last:border-b-0 [&_summary::-webkit-details-marker]:hidden"
+                >
+                  <summary className="flex cursor-pointer list-none items-start justify-between gap-6">
+                    <dt className="font-display text-[17px] font-semibold leading-snug tracking-[-0.01em] text-ink group-open:text-ink">
+                      {f.q}
+                    </dt>
+                    <span
+                      className="mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border border-ink-20 font-mono text-[12px] text-ink-60 transition-transform group-open:rotate-45 group-open:border-ink group-open:text-ink"
+                      aria-hidden
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <dd className="mt-3 max-w-2xl text-[14.5px] leading-relaxed text-ink-60">
+                    {f.a}
+                  </dd>
+                </details>
+              ))}
+            </dl>
+          </div>
+        </Container>
+      </section>
+
       {/* CTA */}
       <section className="pb-24">
         <Container>
           <div className="flex flex-wrap items-center justify-between gap-6 border-t border-ink-12 pt-12">
             <div className="max-w-xl">
-              <Eyebrow index="§ 04" accent>
+              <Eyebrow index="§ 05" accent>
                 Right-size a plan
               </Eyebrow>
               <h2 className="mt-4 font-display text-[clamp(2rem,4vw,3rem)] font-medium leading-[1.02] tracking-[-0.025em] text-ink">

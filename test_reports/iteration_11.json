@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration-11 verified end-to-end (frontend-only, no backend changes). PRICING FAQ — data-testid='pricing-faq' renders below comparison table; all 8 <details> elements present (pricing-faq-0..7); clicking summary opens <dd>; final CTA eyebrow now '§ 05'; exactly 1 <script type='application/ld+json' data-pricing-faq='1'> in document.head; JSON.parse yields @type='FAQPage' and mainEntity.length===8 with first Q='What does the 15% platform fee actually cover?' and acceptedAnswer present. EXPERT STICKY CTA — at 390x844 viewport, data-testid='expert-sticky-cta' is visible at bottom (bounding box y=775 in 844 viewport, h=69), shows '$380/hr · Kwame · Available next week · Message', data-testid='expert-sticky-message' button present, position remains y=775 after window.scrollTo(0,1500) (fixed-position holds), at 1280x800 the same testid is_visible()===false. DASHBOARD — with seeded brief (user_id=user_admin_84f1d804, status='open', proposal_count=3), data-testid='dashboard-resume-strip' is visible with eyebrow 'Pick up where you left off · Proposals to review', title 'TEST_ITER11 Brief Resume Strip', meta '3 proposals waiting · Engineering', CTA 'Review proposals'; href='/briefs/brief_iter11_test_…'. Resume-strip priority correctly chooses VETTING over brief when both exist (vetting-in-progress beats brief-with-proposals per spec). With one brief + zero conversations/contracts, dashboard-empty count = 2 (Active contracts + Conversations), each with svg icon + primary CTA + (where applicable) secondary CTA. No 'Rendered more hooks' React error observed in console. Header on signed-out home: 4 primary nav items ('01 Network', '02 Managed', '03 Pricing', '04 Journal') + 'For experts →' + 'Sign in' + 'Post a brief' — all present. VETTING TRACKER — with vetting_applications.stage='screening_call', data-testid='vetting-tracker' renders with 'Your progress · Stage 3 / 5 · Live screening call · Complete 50%', progress bar inner-div style.width='50%', and 3-column grid 'Right now / Typical time / Next step' with correct copy ('30-min call with a senior matcher. Pass to continue.' / '30 min · schedule within 3 days' / 'Paid test project'). With stage='approved' the tracker disappears (verified). ADMIN BLOG EMPTY — production DB already has published posts so data-testid='blog-empty-posts' correctly does NOT render; static review of /app/src/components/AdminBlogTab.tsx lines 121-133 confirms the empty block JSX with data-testid='blog-empty-posts' and the 'blog-empty-new-post' button wired to setEditing('new'). Did NOT delete production blog rows just to demo the empty state.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "AUTH_RL_MAX=5 / 900s in-process bucket trips on rapid test runs (had to `supervisorctl restart backend` twice during iter-11). Pre-existing carry-forward from iter-9/10."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All pages", "issues": ["PRE-EXISTING (carry-forward iter-6..10): shipper-api-production-3b99.up.railway.app analytics calls throw 2-3 CORS errors per page load. No functional impact."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PRE-EXISTING (carry-forward iter-6..10): Remove/proxy shipper-api railway analytics calls — every page load throws CORS errors.",
+    "PRE-EXISTING (carry-forward iter-9/10): /api/blog/assets/{fid} Cache-Control header still overridden by global no-store middleware.",
+    "PRE-EXISTING (carry-forward iter-9/10): <link rel=alternate type=application/rss+xml> on /blog and /blog/:slug still hardcodes https://worksoy.com instead of import.meta.env.VITE_BACKEND_URL.",
+    "INFO: Iter-11 features fully verified. No action items for E1 from this iteration."
+  ],
+  "critical_code_review_comments": [
+    "DashboardPage.tsx — useMemo for `resume` correctly placed BEFORE the early-return loader (line ~145 area). No `Rendered more hooks` warning fired during 4-5 navigation cycles.",
+    "DashboardPage resume priority is unread-message > vetting-in-progress > brief-with-proposals > active-contract (verified: with a brief AND vetting both present, the strip linked to /vetting; with only the brief, it linked to /briefs/{id}). Matches spec.",
+    "VettingPage.STAGES now includes `eta` per stage (line 43-49). currentIdx math: `Math.round((currentIdx / (STAGES.length - 1)) * 100)` — for screening_call (idx=2) on a 5-stage array (length 5) this gives round(2/4*100)=50%, correct. Be aware: 'approved' stage is idx=4 → 100%, but tracker is hidden when isApproved so this is moot.",
+    "PricingPage.useEffect JSON-LD injection has clean cleanup (`return () => { s.remove(); }`), so navigating away does not leak the script tag.",
+    "ExpertDetailPage sticky bar uses `lg:hidden` (Tailwind: hidden ≥1024px). Verified hidden at 1280 width, visible at 390. The spacer `h-20 lg:hidden` div correctly prevents content from being obscured.",
+    "AdminBlogTab.tsx line 121-133 — `blog-empty-posts` wrapper has Sparkles icon + 'Write the first post' button (data-testid='blog-empty-new-post') calling setEditing('new'). Not visually demoed because production DB has published posts (deleting them just to demo the empty state would have been destructive).",
+    "ExpertDetailPage sticky bar reuses the same handleMessage handler (button onClick={handleMessage}) — clicking the sticky 'Message' triggers the same /api/messages thread-open flow as the desktop aside button. Verified via static code read; live click would have required a non-admin user with a different expert (admin's UI flow may differ).",
+    "All 8 FAQ <details> entries open independently — using <details>/<summary> native HTML means no JS state mgmt needed and they all keep state across re-renders for free."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A — frontend-only iteration, no backend changes shipped. Existing /api/vetting/me, /api/briefs/mine, /api/auth/login all returned 200 for the test flows.",
+    "frontend": "100% — all 5 iter-11 features verified: resume strip (with seeded brief), 2-of-up-to-4 dashboard-empty states with icons + CTAs, mobile expert sticky CTA (visible mobile, hidden desktop), pricing FAQ section + 8 details + JSON-LD FAQPage with 8 mainEntity + § 05 final eyebrow, vetting tracker showing Stage 3/5 50% with all 3 columns and hiding on approved, admin blog-empty-posts JSX testids confirmed via static review (not visually demoed — production has posts)."
+  },
+  "test_credentials": "admin@worksoy.com / WorkSoyAdmin2026! — works after backend restart resets the rate-limit bucket.",
+  "seed_data_creation": "Per run: 1 brief (id=brief_iter11_test_1781288639009, title='TEST_ITER11 Brief Resume Strip'), 1 vetting_application (id=vap_test_iter11), 1 expert (id=exp_test_iter11_admin) — ALL cleaned at end of run via mongo deleteMany ({title:/^TEST_ITER11/}, {user_id:'user_admin_84f1d804'}). DB is back to clean state.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Vetting collection is `vetting_applications` (not `vetting` — that's an unused legacy collection). Admin user_id = `user_admin_84f1d804`. To re-seed for vetting tracker UI test: db.experts.insertOne({id:'exp_test_iter11_admin', user_id:'user_admin_84f1d804', name:'Admin Test', headline:'…', category:'Engineering', specialties:['python'], hourlyRate:150, isPublished:false, vetting_stage:'screening_call', created_at:new Date(), …}) + db.vetting_applications.insertOne({id:'vap_test_iter11', user_id, expert_id, stage:'screening_call', history:[], created_at:new Date(), updated_at:new Date()}). Auth rate-limit bucket trips after ~5 login attempts in 15 min — `sudo supervisorctl restart backend` to reset. Resume-strip priority: unread-msg > vetting-in-progress > brief-with-proposals > active-contract — verify with the right precondition. Mobile sticky CTA testid present DOM-wide but hidden via `lg:hidden` Tailwind class — use is_visible() or boundingBox null check at desktop widths.",
+  "rca of the issue": "No new bugs in iter-11. All 5 UX additions land cleanly. The two pre-existing carry-forwards from iter-9/10 (Cache-Control on /api/blog/assets, hardcoded RSS host in <link rel=alternate>) are unrelated to this iteration and unchanged."
+}

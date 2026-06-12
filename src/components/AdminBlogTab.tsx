@@ -118,7 +118,21 @@ export function AdminBlogTab() {
       ) : tab === "posts" ? (
         <div className="rounded border border-cream/10">
           {posts.length === 0 ? (
-            <div className="p-10 text-center text-cream/60">No posts yet. Create your first essay.</div>
+            <div className="px-6 py-14 text-center" data-testid="blog-empty-posts">
+              <div className="mx-auto mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-cream/15 bg-ink-2 text-sun">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <p className="mx-auto max-w-md text-[14px] text-cream/70">
+                No posts yet. Write your first essay — AI can draft the first 500 words from a one-line idea.
+              </p>
+              <button
+                data-testid="blog-empty-new-post"
+                onClick={() => setEditing("new")}
+                className="mt-5 inline-flex items-center gap-2 rounded bg-sun px-4 py-2 text-[13px] font-semibold text-ink hover:bg-sun-2"
+              >
+                <PlusCircle className="h-4 w-4" /> Write the first post
+              </button>
+            </div>
           ) : (
             <table className="w-full text-[13px]">
               <thead className="border-b border-cream/10 text-left text-cream/50">
@@ -200,7 +214,11 @@ export function AdminBlogTab() {
       ) : tab === "comments" ? (
         <div className="rounded border border-cream/10">
           {comments.length === 0 ? (
-            <div className="p-10 text-center text-cream/60">No comments yet.</div>
+            <div className="px-6 py-14 text-center text-cream/60">
+              <p className="mx-auto max-w-md text-[14px]">
+                No comments yet. They'll appear here for moderation once readers start posting under your essays.
+              </p>
+            </div>
           ) : (
             <ul className="divide-y divide-cream/5">
               {comments.map((c) => (
@@ -247,7 +265,11 @@ export function AdminBlogTab() {
       ) : (
         <div className="rounded border border-cream/10">
           {subs.length === 0 ? (
-            <div className="p-10 text-center text-cream/60">No subscribers yet.</div>
+            <div className="px-6 py-14 text-center text-cream/60">
+              <p className="mx-auto max-w-md text-[14px]">
+                No subscribers yet. The "Or subscribe via RSS" link on every Journal page captures readers — your first signup usually lands within 24 hours of the first published post.
+              </p>
+            </div>
           ) : (
             <table className="w-full text-[13px]">
               <thead className="border-b border-cream/10 text-left text-cream/50">

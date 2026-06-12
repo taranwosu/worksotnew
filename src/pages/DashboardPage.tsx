@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, Plus, FileText, Download, Heart } from "lucide-react";
+import { Loader2, Plus, FileText, Download, Heart, ArrowRight, Inbox, FileSignature, MailOpen, Sparkles } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import {
   listMyBriefs,
@@ -102,6 +102,67 @@ export function DashboardPage() {
     }
   };
 
+  // ── Derived: "Continue where you left off"
+  // Computed BEFORE the early return so React sees a stable hook count on
+  // every render (initial loading + post-auth) — "Rendered more hooks"
+  // crashes otherwise. Falls back to safe defaults when state isn't ready.
+  const vettingInProgress = vetting && !["approved", "rejected"].includes(vetting.stage);
+  const sessionUserId = session?.user?._id;
+  const resume = useMemo<null | {
+    eyebrow: string;
+    title: string;
+    meta: string;
+    to: string;
+    params?: Record<string, string>;
+    cta: string;
+  }>(() => {
+    if (!sessionUserId) return null;
+    const unreadConv = convs.find((c) => c.unread > 0);
+    if (unreadConv) {
+      return {
+        eyebrow: "Unread messages",
+        title: `${unreadConv.other_user_name} replied`,
+        meta: `${unreadConv.unread} new · ${unreadConv.brief_title || "Direct thread"}`,
+        to: "/messages",
+        cta: "Open inbox",
+      };
+    }
+    if (vettingInProgress) {
+      return {
+        eyebrow: "Vetting in progress",
+        title: `Continue at: ${vetting!.stage.replace(/_/g, " ")}`,
+        meta: "Picks up exactly where you stopped",
+        to: "/vetting",
+        cta: "Resume vetting",
+      };
+    }
+    const briefWithProposals = briefs.find(
+      (b) => b.status === "open" && b.proposal_count > 0,
+    );
+    if (briefWithProposals) {
+      return {
+        eyebrow: "Proposals to review",
+        title: briefWithProposals.title,
+        meta: `${briefWithProposals.proposal_count} proposal${briefWithProposals.proposal_count === 1 ? "" : "s"} waiting · ${briefWithProposals.category}`,
+        to: "/briefs/$briefId",
+        params: { briefId: briefWithProposals.id },
+        cta: "Review proposals",
+      };
+    }
+    const activeContract = contracts.find((c) => c.status === "active");
+    if (activeContract) {
+      return {
+        eyebrow: "Active contract",
+        title: activeContract.brief_title,
+        meta: `$${activeContract.total_amount.toLocaleString()} · ${activeContract.client_user_id === sessionUserId ? `with ${activeContract.expert_name}` : `from ${activeContract.client_name}`}`,
+        to: "/contracts/$contractId",
+        params: { contractId: activeContract.id },
+        cta: "Open workspace",
+      };
+    }
+    return null;
+  }, [convs, vetting, vettingInProgress, briefs, contracts, sessionUserId]);
+
   if (isPending || !session) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -111,7 +172,6 @@ export function DashboardPage() {
   }
 
   const firstName = (session.user.name || session.user.email).split(" ")[0];
-  const vettingInProgress = vetting && !["approved", "rejected"].includes(vetting.stage);
 
   const handleWithdraw = async (id: string) => {
     try {
@@ -155,6 +215,32 @@ export function DashboardPage() {
             <p className="font-semibold">You're in the vetting gauntlet — current stage: <span className="italic">{vetting!.stage.replace("_", " ")}</span>.</p>
             <p className="mt-1 text-ink-60">Until you're approved, your profile is hidden and proposals are disabled. <Link to="/vetting" className="underline">Continue →</Link></p>
           </div>
+        )}
+
+        {/* Continue where you left off — the single most-actionable item.
+            Cuts time-to-task by surfacing exactly what the user came back for. */}
+        {!loading && resume && (
+          <Link
+            to={resume.to}
+            params={resume.params as never}
+            data-testid="dashboard-resume-strip"
+            className="group mt-6 flex flex-wrap items-center justify-between gap-4 rounded border border-ink bg-ink px-5 py-4 text-cream transition-colors hover:bg-ink-2"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-cream/60">
+                Pick up where you left off · {resume.eyebrow}
+              </p>
+              <p className="mt-1.5 truncate font-display text-[18px] font-semibold tracking-[-0.01em]">
+                {resume.title}
+              </p>
+              <p className="mt-0.5 truncate text-[12.5px] text-cream/70">
+                {resume.meta}
+              </p>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-2 rounded bg-sun px-4 py-2 text-[13px] font-semibold text-ink transition-transform group-hover:translate-x-0.5">
+              {resume.cta} <ArrowRight className="h-4 w-4" />
+            </span>
+          </Link>
         )}
 
         <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -311,7 +397,12 @@ export function DashboardPage() {
 
         <Section title="Your briefs" count={briefs.length} href="/post-request" cta="Post another">
           {loading ? <SkeletonRow /> : briefs.length === 0 ? (
-            <Empty text="No briefs yet. Post your first one to meet 3 matched experts within 48 hours." cta={{ to: "/post-request", label: "Post a brief" }} />
+            <Empty
+              icon={Sparkles}
+              text="No briefs yet. Post your first one and meet 3 vetted experts within 48 hours — fully refundable if the shortlist misses."
+              cta={{ to: "/post-request", label: "Post your first brief" }}
+              secondary={{ to: "/experts", label: "Browse the network first" }}
+            />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {briefs.map((b) => (
@@ -344,7 +435,11 @@ export function DashboardPage() {
         {hasExpertProfile && (
           <Section title="Your proposals" count={proposals.length}>
             {proposals.length === 0 ? (
-              <Empty text="No proposals sent yet. Browse open briefs to send your first." cta={{ to: "/briefs", label: "Browse open briefs" }} />
+              <Empty
+                icon={FileSignature}
+                text="No proposals sent yet. Browse open briefs and pitch on the ones that fit your craft — the right brief earns a reply within 48 hours."
+                cta={{ to: "/briefs", label: "Browse open briefs" }}
+              />
             ) : (
               <div className="overflow-hidden rounded border border-ink-12 bg-white">
                 {proposals.map((p) => (
@@ -382,7 +477,11 @@ export function DashboardPage() {
 
         <Section title="Active contracts" count={contracts.length}>
           {contracts.length === 0 ? (
-            <Empty text="No active contracts. Accept a proposal on one of your briefs to start." cta={{ to: "/briefs", label: "View your briefs" }} />
+            <Empty
+              icon={Inbox}
+              text="No active contracts yet. Once you accept a proposal on one of your briefs, it lands here with milestone escrow already set up."
+              cta={{ to: "/briefs", label: "View your briefs" }}
+            />
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {contracts.map((c) => (
@@ -410,7 +509,12 @@ export function DashboardPage() {
 
         <Section title="Messages" count={convs.length} href="/messages" cta="Open inbox">
           {convs.length === 0 ? (
-            <Empty text="No conversations yet. Message an expert from their profile, or a thread opens automatically when a proposal is accepted." cta={{ to: "/experts", label: "Browse experts" }} />
+            <Empty
+              icon={MailOpen}
+              text="No conversations yet. Threads open automatically when you message an expert from their profile or when a proposal is accepted on one of your briefs."
+              cta={{ to: "/experts", label: "Browse experts" }}
+              secondary={{ to: "/post-request", label: "Post a brief instead" }}
+            />
           ) : (
             <div className="divide-y divide-ink-10 overflow-hidden rounded border border-ink-12 bg-white">
               {convs.slice(0, 3).map((c) => (
@@ -479,14 +583,41 @@ function Section({
   );
 }
 
-function Empty({ text, cta }: { text: string; cta?: { to: string; label: string } }) {
+function Empty({
+  text,
+  cta,
+  secondary,
+  icon: Icon,
+}: {
+  text: string;
+  cta?: { to: string; label: string };
+  secondary?: { to: string; label: string };
+  icon?: React.ElementType;
+}) {
   return (
-    <div className="rounded border border-dashed border-ink-20 bg-white px-6 py-10 text-center">
-      <p className="mx-auto max-w-md text-[13px] leading-relaxed text-ink-60">{text}</p>
-      {cta && (
-        <LinkButton to={cta.to} tone="ink" size="sm" arrow className="mt-4">
-          {cta.label}
-        </LinkButton>
+    <div
+      data-testid="dashboard-empty"
+      className="overflow-hidden rounded border border-dashed border-ink-20 bg-white px-6 py-12 text-center"
+    >
+      {Icon && (
+        <div className="mx-auto mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink-12 bg-cream text-ink-60">
+          <Icon className="h-4.5 w-4.5" strokeWidth={1.6} />
+        </div>
+      )}
+      <p className="mx-auto max-w-md text-[14px] leading-relaxed text-ink-60">{text}</p>
+      {(cta || secondary) && (
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          {cta && (
+            <LinkButton to={cta.to} tone="ink" size="sm" arrow>
+              {cta.label}
+            </LinkButton>
+          )}
+          {secondary && (
+            <LinkButton to={secondary.to} tone="outline" size="sm">
+              {secondary.label}
+            </LinkButton>
+          )}
+        </div>
       )}
     </div>
   );

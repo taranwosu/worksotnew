@@ -41,11 +41,11 @@ import { usePageMeta } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
 const STAGES = [
-  { key: "language_personality", label: "Language & personality", icon: Languages, blurb: "10-minute screen — communication, timezone, fit." },
-  { key: "skill_quiz", label: "Skill questionnaire", icon: Brain, blurb: "Case-study + methodology — domain expertise check." },
-  { key: "screening_call", label: "Live screening call", icon: PhoneCall, blurb: "30-min call with a senior matcher. Pass to continue." },
-  { key: "test_project", label: "Paid test project", icon: Hammer, blurb: "A scoped, real engagement reviewed by our panel." },
-  { key: "approved", label: "Approved · on roster", icon: Award, blurb: "Verified badge unlocks; you can submit proposals." },
+  { key: "language_personality", label: "Language & personality", icon: Languages, blurb: "10-minute screen — communication, timezone, fit.", eta: "10 min · same day review" },
+  { key: "skill_quiz", label: "Skill questionnaire", icon: Brain, blurb: "Case-study + methodology — domain expertise check.", eta: "45 min · 1–2 day review" },
+  { key: "screening_call", label: "Live screening call", icon: PhoneCall, blurb: "30-min call with a senior matcher. Pass to continue.", eta: "30 min · schedule within 3 days" },
+  { key: "test_project", label: "Paid test project", icon: Hammer, blurb: "A scoped, real engagement reviewed by our panel.", eta: "3–7 days · panel review 2 days" },
+  { key: "approved", label: "Approved · on roster", icon: Award, blurb: "Verified badge unlocks; you can submit proposals.", eta: "—" },
 ] as const;
 
 type StageKey = (typeof STAGES)[number]["key"];
@@ -155,6 +155,74 @@ export function VettingPage() {
             {isRejected && <Tag tone="outline" size="md">Closed</Tag>}
           </div>
         </div>
+
+        {/* Progress tracker — answers "where am I?", "what's next?", "ETA?"
+            in one glance. Shown when the gauntlet is in progress. */}
+        {!isApproved && !isRejected && (
+          <div
+            data-testid="vetting-tracker"
+            className="mt-8 rounded border border-ink-12 bg-white p-6 md:p-7"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-6">
+              <div>
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
+                  Your progress
+                </p>
+                <p className="mt-2 font-display text-[28px] font-medium leading-none tracking-[-0.02em] text-ink">
+                  Stage <span className="tabular">{currentIdx + 1}</span>
+                  <span className="text-ink-40"> / {STAGES.length}</span>
+                  <span className="ml-3 text-[16px] text-ink-60">· {STAGES[currentIdx].label}</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-60">
+                  Complete
+                </p>
+                <p className="mt-2 font-display text-[28px] font-medium tabular text-ink">
+                  {Math.round((currentIdx / (STAGES.length - 1)) * 100)}%
+                </p>
+              </div>
+            </div>
+
+            {/* Bar */}
+            <div className="mt-5 h-2 w-full overflow-hidden rounded-pill bg-ink-08">
+              <div
+                className="h-full bg-ink transition-[width] duration-500"
+                style={{ width: `${(currentIdx / (STAGES.length - 1)) * 100}%` }}
+              />
+            </div>
+
+            {/* What's next + ETA */}
+            <div className="mt-6 grid gap-5 md:grid-cols-3 md:gap-8">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-40">
+                  Right now
+                </p>
+                <p className="mt-1.5 text-[13.5px] leading-snug text-ink">
+                  {STAGES[currentIdx].blurb}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-40">
+                  Typical time
+                </p>
+                <p className="mt-1.5 text-[13.5px] leading-snug text-ink">
+                  {STAGES[currentIdx].eta}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-40">
+                  Next step
+                </p>
+                <p className="mt-1.5 text-[13.5px] leading-snug text-ink">
+                  {currentIdx + 1 < STAGES.length
+                    ? STAGES[currentIdx + 1].label
+                    : "Listed on the roster"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stage strip */}
         <ol className="mt-10 grid grid-cols-1 gap-3 md:grid-cols-5" data-testid="vetting-stages">

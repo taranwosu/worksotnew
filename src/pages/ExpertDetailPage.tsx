@@ -362,6 +362,40 @@ export function ExpertDetailPage() {
           </div>
         </Container>
       </section>
+
+      {/* Mobile-only sticky bottom CTA — keeps "Message" in thumb reach
+          during scroll. Hidden on lg+ where the sticky aside already does
+          the same job. Bottom-safe-area padding for iOS gestures. */}
+      <div
+        data-testid="expert-sticky-cta"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-12 bg-cream/95 px-4 py-3 backdrop-blur-md lg:hidden"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display text-[14px] font-semibold text-ink">
+              ${expert.hourlyRate}/hr · {expert.name.split(" ")[0]}
+            </p>
+            <p className="truncate font-mono text-[10px] uppercase tracking-[0.14em] text-ink-60">
+              {availableNow ? "Available now" : expert.availability}
+            </p>
+          </div>
+          <Button
+            tone="ink"
+            size="md"
+            data-testid="expert-sticky-message"
+            onClick={handleMessage}
+            disabled={messaging}
+            iconLeft={<MessageSquare className="h-4 w-4" strokeWidth={2} />}
+          >
+            {messaging ? "Opening…" : "Message"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Spacer so the sticky CTA doesn't overlap the page's last content
+          on mobile. Matches the bar's ~78px height. */}
+      <div className="h-20 lg:hidden" aria-hidden />
     </div>
   );
 }
