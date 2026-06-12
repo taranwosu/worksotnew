@@ -162,3 +162,32 @@ Add **"Related expert"** call-out at the bottom of each blog post: pick 1-2 vett
 - TipTap admin editor itself doesn't get syntax highlighting in code blocks (only the public reader). Add `@tiptap/extension-code-block-lowlight` if admins want WYSIWYG-time colour.
 - Comment threading (reply-to) — currently flat.
 - RSS includes excerpt only, not full body. Some readers prefer full content<:encoded>.
+
+## Session 2026-06-12 (8) — UX quick wins 1-5
+
+### Shipped
+- **Continue where you left off** strip on `/dashboard` — single most-actionable item (unread msg > vetting in progress > brief w/ proposals > active contract). Bold ink-on-cream block at the top with sun-yellow CTA. Hidden when nothing to resume. `data-testid='dashboard-resume-strip'`.
+- **Mobile sticky CTA** on `/experts/:id` — fixed bottom bar (`lg:hidden`) with rate + first-name + availability + Message button. Reuses the same `handleMessage` handler; iOS safe-area aware.
+- **Vetting tracker** above the existing 5-stage strip on `/vetting` — "Stage X / 5", progress bar, 3-column "Right now · Typical time · Next step". Hidden when approved/rejected. STAGES now carries per-stage ETA copy.
+- **Upgraded empty states** — Empty component on `/dashboard` accepts `icon` + `secondary` CTA; wired Sparkles/FileSignature/Inbox/MailOpen across 4 zones with conversion-focused copy ("Post your first brief — meet 3 vetted experts in 48h, fully refundable if the shortlist misses"). Admin Blog CMS empty states also upgraded with "Write the first post" + AI hint.
+- **Pricing FAQ** — 8 procurement questions (15% fee, direct-hire conversion, SLA, disputes, IP, currency...) rendered as native `<details>/<summary>` with rotating + indicator. FAQPage JSON-LD injected via useEffect — same AEO pattern that already powers blog posts. Eyebrow indices renumbered.
+
+### Tests
+- 100% frontend on iter-11. Resume-strip priority order verified (vetting beats brief-with-proposals when both exist). Mobile sticky CTA: visible at 390×844, hidden at 1280×800. Pricing FAQ JSON-LD: 1 script tag with FAQPage `@type` and `mainEntity.length===8`. Vetting tracker renders correctly at stage='screening_call' (Stage 3/5, 50%) and hides at stage='approved'.
+
+### Fixed
+- DashboardPage `useMemo` was originally placed AFTER an early-return Loader2 — moved BEFORE the early-return to satisfy React's hook-count rule. No "Rendered more hooks" crashes.
+
+### Files
+- `/app/src/pages/DashboardPage.tsx`, `/app/src/pages/ExpertDetailPage.tsx`, `/app/src/pages/PricingPage.tsx`, `/app/src/pages/VettingPage.tsx`, `/app/src/components/AdminBlogTab.tsx`.
+
+### Outstanding from earlier rec list (6-15)
+- Real-time "expected shortlist size" on `/post-request` (#6) — single highest-conversion lever
+- Compare drawer on `/experts` (#7)
+- Calendly on screening stage (#8)
+- ⌘K command palette (#9)
+- Newsletter digest cron (#10)
+- Semantic search across experts (#11)
+- Inline auto-matches in post-brief flow (#12)
+- Expert reviews + case studies (#13)
+- Free wins: announcement bar, Plausible, prefers-reduced-motion, URL-persisted filters, skeleton loaders
