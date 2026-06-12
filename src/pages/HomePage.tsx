@@ -113,31 +113,48 @@ const workflow = [
 const guarantees = [
   {
     icon: FileSignature,
-    title: "Milestone SOWs",
-    body: "Every engagement runs on a counter-signed statement of work with named deliverables, acceptance criteria, and dates.",
+    title: "Counter-signed milestone SOWs",
+    body: "Every engagement runs on a counter-signed statement of work with named deliverables, acceptance criteria, and dates. The drafting is on us — your legal team reviews, doesn't write.",
+    value: "Worth ~$3,400 in legal",
   },
   {
     icon: ShieldCheck,
-    title: "30-day rework",
-    body: "If a deliverable misses brief, we cover the rework window on our ledger — not yours. No dispute panels.",
+    title: "30-day rework window — billed to us",
+    body: "If a deliverable misses brief in the first 30 days, the contractor reworks it on our ledger. No dispute panels, no awkward calls, no second invoice.",
+    value: "Worth ~$8,000 in rework",
   },
   {
     icon: Banknote,
-    title: "Escrow by default",
-    body: "Funds are held, released on acceptance. No upfront wires to unvetted vendors, no post-delivery chasing.",
+    title: "Stripe escrow on every milestone",
+    body: "Funds are held before work starts, released only on your written acceptance. No upfront wires to unvetted vendors, no post-delivery chasing.",
+    value: "Worth ~$1,200 in float",
   },
   {
     icon: Timer,
-    title: "48-hour match SLA",
-    body: "A real person reads your brief within the hour. Shortlists land inside two working days or the first retainer is on us.",
+    title: "48-hour shortlist — or it's on us",
+    body: "Three hand-matched finalists land inside two working days, every brief. Miss the SLA and your first retainer is credited in full — written into the engagement letter.",
+    value: "Avg. 41h actual",
   },
+];
+
+// Hormozi-style "what's actually in the box" stack. Each line is a concrete
+// deliverable a client would otherwise buy separately — totalled at the
+// bottom so the 15% fee reads as a relative bargain.
+const valueStack = [
+  { item: "Three hand-matched finalists in ≤48h (avg 41h)", value: "$8,000+" },
+  { item: "Counter-signed milestone SOW, drafted by us", value: "$3,400" },
+  { item: "Stripe escrow on every milestone", value: "$1,200" },
+  { item: "Named operations lead for the engagement", value: "$6,000" },
+  { item: "30-day rework window — billed to us, not you", value: "$8,000" },
+  { item: "Replacement guarantee — swap a contractor, no questions", value: "$12,000" },
+  { item: "Rate benchmarks + pre-negotiated terms", value: "$2,400" },
 ];
 
 export function HomePage() {
   usePageMeta({
-    title: "WorkSoy — Premium contractors. Real accountability.",
+    title: "WorkSoy — Brief Monday. Signed Friday. Or your first retainer is free.",
     description:
-      "Brief in, shortlist in 48 hours, contract signed by Friday. The premium network for vetted contractors, fractional leaders, and senior specialists.",
+      "Three hand-matched senior contractors in 48 hours. Counter-signed milestone SOWs, Stripe escrow, 30-day rework on us. Used by operators at Ramp, Linear, Vercel, Anthropic. Flat 15% — only on accepted milestones.",
     path: "/",
   });
   const [featured, setFeatured] = useState<Expert[]>([]);
@@ -195,20 +212,29 @@ export function HomePage() {
                   </span>
                   .
                 </h1>
+                <p
+                  data-testid="hero-promise"
+                  className="mt-7 inline-flex items-center gap-3 rounded-pill border border-ink bg-cream px-4 py-2 font-mono text-[12px] uppercase tracking-[0.14em] text-ink"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-sun" aria-hidden />
+                  Brief Monday · Signed Friday · Or your first retainer is on us
+                </p>
               </Reveal>
               <Reveal delay={80} className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-12">
                 <p className="prose-lede md:col-span-7">
-                  WorkSoy is where operators staff consequential work — fractional
-                  CFOs, SOC 2 leads, staff product designers, PEs. Every
-                  contractor is interviewed by a human, rate-benchmarked, and
-                  placed under a milestone SOW with escrow.
+                  Three hand-matched senior contractors — fractional CFOs, SOC 2
+                  leads, staff designers, PEs — in your inbox inside 48 hours.
+                  Every engagement runs on a counter-signed milestone SOW with
+                  Stripe escrow. Used by operators at Ramp, Linear, Vercel,
+                  Anthropic, Mercury, Brex.
                 </p>
                 <div className="md:col-span-5 md:border-l md:border-ink-12 md:pl-6">
                   <p className="text-[13px] leading-relaxed text-ink-60">
                     <span className="eyebrow text-ink">Not</span> a job board.
-                    Not a marketplace. We read your brief, hand-match three
-                    finalists within 48 hours, and counter-sign the SOW so
-                    there is a named party accountable if the work drifts.
+                    Not a marketplace. A human matcher reads your brief in
+                    under an hour, hand-builds a three-person shortlist, and
+                    counter-signs the SOW so a named party is accountable if
+                    the work drifts.
                   </p>
                 </div>
               </Reveal>
@@ -560,11 +586,11 @@ export function HomePage() {
             kicker="Why this isn't a marketplace"
             title={
               <>
-                Accountability is not a <em className="italic">feature</em>.
-                <br className="hidden md:block" /> It is the product.
+                Four guarantees that pay you,<br className="hidden md:block" />
+                not the other way around.
               </>
             }
-            lede="Every retainer is backed by four operational guarantees that a typical marketplace will not, and a staffing agency cannot match without doubling your line-item."
+            lede="Every retainer is backed by four operational guarantees a typical marketplace will not offer — and a staffing agency cannot match without doubling your line-item. Each one has a dollar figure on it because that's what it would cost you in-house."
             align="split"
           />
 
@@ -576,8 +602,13 @@ export function HomePage() {
                 className="group flex h-full flex-col justify-between rounded border border-ink-12 bg-white p-6 transition-all duration-[var(--dur-base)] ease-out hover:-translate-y-[2px] hover:border-ink"
               >
                 <div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded bg-cream-2 text-ink transition-colors group-hover:bg-sun">
-                    <g.icon className="h-5 w-5" strokeWidth={1.75} />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded bg-cream-2 text-ink transition-colors group-hover:bg-sun">
+                      <g.icon className="h-5 w-5" strokeWidth={1.75} />
+                    </div>
+                    <span className="rounded-pill border border-sun bg-sun/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink">
+                      {g.value}
+                    </span>
                   </div>
                   <h3 className="mt-5 font-display text-lg font-semibold leading-snug text-ink">
                     {g.title}
@@ -596,6 +627,72 @@ export function HomePage() {
         </Container>
       </section>
 
+      {/* ───────────── VALUE STACK ───────────── */}
+      <section className="border-y border-ink-12 bg-paper py-20 md:py-28">
+        <Container>
+          <div className="grid gap-12 md:grid-cols-12">
+            <div className="md:col-span-5">
+              <Eyebrow index="§ 07.5" accent>
+                What's actually in the box
+              </Eyebrow>
+              <h2 className="display-lg mt-4 text-ink">
+                A line-item view of every brief.
+              </h2>
+              <p className="prose-lede mt-6 max-w-md">
+                If you ran this process in-house — recruiter retainer, legal
+                drafting, escrow setup, operations lead — the bill clears
+                $40,000 before anyone has done any work. The WorkSoy fee is
+                <span className="font-display italic"> 15% on milestone acceptance only</span>,
+                charged against work you've already approved.
+              </p>
+            </div>
+
+            <div className="md:col-span-7">
+              <ul
+                data-testid="value-stack"
+                className="rounded border border-ink-12 bg-white"
+              >
+                {valueStack.map((row, i) => (
+                  <li
+                    key={row.item}
+                    className={[
+                      "flex items-baseline justify-between gap-4 px-5 py-4",
+                      i < valueStack.length - 1 ? "border-b border-ink-08" : "",
+                    ].join(" ")}
+                  >
+                    <span className="flex items-baseline gap-3 text-[14px] text-ink">
+                      <span className="font-mono text-[11px] text-ink-40 tabular">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      {row.item}
+                    </span>
+                    <span className="font-mono text-[12.5px] text-ink-60 tabular">
+                      {row.value}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-4 rounded border border-ink bg-ink px-5 py-4 text-cream">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-cream/60">
+                  Total walk-away value if bought separately
+                </span>
+                <span className="font-display text-[28px] font-medium tabular leading-none">
+                  $41,000+
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-4 rounded border border-sun bg-sun px-5 py-4 text-ink">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
+                  Your platform fee
+                </span>
+                <span className="font-display text-[28px] font-medium tabular leading-none">
+                  15% · only on accepted milestones
+                </span>
+              </div>
+            </div>
+          </div>
+        </Container>
+      </section>
+
       {/* ───────────── CTA CLOSER ───────────── */}
       <section className="pb-24 md:pb-32">
         <Container>
@@ -610,15 +707,19 @@ export function HomePage() {
                   <br />
                   Meet three by Wednesday.
                   <br />
-                  <span className="text-ink-40">Signed</span> by Friday.
+                  <span className="text-ink-40">Signed</span> by Friday —
+                  <br />
+                  or you don't pay a cent.
                 </h2>
                 <p className="mt-6 max-w-md text-[15px] leading-relaxed text-ink-60">
-                  Ten-minute brief, zero obligation. You won&rsquo;t be in a
-                  funnel — a real matcher reads it and replies by end-of-day.
+                  Ten-minute brief, zero obligation. A real matcher reads it
+                  in under an hour and replies by end-of-day. If a hand-matched
+                  shortlist doesn't land in 48 hours, your first retainer is
+                  credited in full — written into the engagement letter.
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-3">
                   <LinkButton to="/post-request" tone="ink" size="lg" arrow>
-                    Post a brief
+                    Post a brief — no card, no account
                   </LinkButton>
                   <LinkButton to="/pricing" tone="ghost" size="lg">
                     See pricing →

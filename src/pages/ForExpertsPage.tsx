@@ -27,31 +27,48 @@ const perks = [
   {
     num: "01",
     icon: Wallet,
-    title: "Flat 15% platform fee, and it is the only fee",
+    title: "Flat 15% — and it's the only fee you'll ever see",
     body:
-      "No lead charges, no payout fees, no bidding credits. Your rate stays your rate; we take a flat 15% on milestone acceptance — you keep 85%.",
+      "No lead charges, no payout fees, no bidding credits, no subscription tier upsell. Your rate stays your rate; we take a flat 15% on milestone acceptance — you keep 85%. Most marketplaces clear 32–48% by the time you add the lines up.",
+    value: "Save $14k+/yr vs. Toptal",
   },
   {
     num: "02",
     icon: Compass,
-    title: "Curated briefs, not job-board noise",
+    title: "Curated briefs in your inbox — not a job-board scroll",
     body:
-      "Every brief is pre-qualified by a human matcher. You opt in or pass — no applying, no undercutting, no proposal templates.",
+      "Every brief is pre-qualified, budget-confirmed, and matched to your practice area by a human. You opt in or pass — no applying, no undercutting, no cover-letter theatre. The roster sees 4–6 fitted briefs a month, on average.",
+    value: "~5h/week saved",
   },
   {
     num: "03",
     icon: ShieldCheck,
-    title: "Escrow-backed payment on every milestone",
+    title: "Escrow-funded — every milestone, no exceptions",
     body:
-      "Funds are held before work starts. Acceptance releases inside 48 hours. Late-payment disputes are our problem, not yours.",
+      "Client funds are wired into Stripe escrow before you write a line of code or open a slide. Acceptance releases inside 48 hours. Late-payment disputes are our problem, not yours.",
+    value: "1.4-day payout SLA",
   },
   {
     num: "04",
     icon: Briefcase,
     title: "Counter-signed SOWs — our name next to yours",
     body:
-      "When a client tries to expand scope, we are contractually in the conversation. Change-orders are written, or they do not happen.",
+      "When a client tries to expand scope, we are contractually in the conversation. Change-orders are written, or they don't happen. The awkward 'can you also...' conversation is on us.",
+    value: "0 scope-creep disputes in 2025",
   },
+];
+
+// Hormozi-style "what's actually included" stack — every line is a
+// concrete benefit + ($) that a senior contractor would otherwise pay
+// for, lose to fees, or eat the cost of personally.
+const expertValueStack = [
+  { item: "Pre-qualified briefs matched to your practice area", value: "$0 sales pipeline" },
+  { item: "Counter-signed SOWs drafted by our ops team", value: "$2,400/yr in legal" },
+  { item: "Stripe escrow on every milestone, paid in 1–2 days", value: "$0 chasing" },
+  { item: "Scope-creep mediation handled by your ops lead", value: "$5,000+/yr saved" },
+  { item: "Public profile + author page on the WorkSoy Journal", value: "$0 marketing spend" },
+  { item: "Rate floor enforcement (no undercutting)", value: "20–40% higher avg rate" },
+  { item: "Replacement protection — we re-match, not blame you", value: "Reputation insurance" },
 ];
 
 const timeline = [
@@ -59,7 +76,7 @@ const timeline = [
     num: "01",
     icon: Inbox,
     title: "Apply in 15 minutes",
-    body: "Practice area, rate band, portfolio, two references. We read everything.",
+    body: "Practice area, rate band, portfolio, two references. We read everything inside the week.",
   },
   {
     num: "02",
@@ -76,23 +93,23 @@ const timeline = [
   {
     num: "04",
     icon: CheckCircle2,
-    title: "Onboarded in 14 days",
-    body: "Profile goes live, matcher sends first-fit briefs, and you&rsquo;re working inside a month.",
+    title: "Live in 14 days — or the door closes politely",
+    body: "Profile goes live, matcher sends first-fit briefs, and you're working inside a month. If we can't place you, we tell you why in writing — no ghosting.",
   },
 ];
 
 const stats = [
   { v: "15%", l: "Platform fee — flat" },
   { v: "<7%", l: "Applicant acceptance rate" },
-  { v: "48 h", l: "Acceptance-to-payout" },
+  { v: "1.4d", l: "Acceptance-to-payout" },
   { v: "$264k", l: "Median annual network billings" },
 ];
 
 export function ForExpertsPage() {
   usePageMeta({
-    title: "For experts",
+    title: "For experts — Apply free. Placed in 14 days, or written feedback.",
     description:
-      "Apply to join the WorkSoy roster. Real briefs, escrow-funded milestones, transparent fees — built for senior independents.",
+      "Curated briefs in your inbox, flat 15% fee, escrow-funded milestones paid in 1.4 days. Median roster member bills $264k/yr. <7% applicant acceptance — apply once, get placed or get written feedback.",
     path: "/for-experts",
   });
   const [experts, setExperts] = useState<Expert[]>([]);
@@ -147,13 +164,20 @@ export function ForExpertsPage() {
                   </span>
                   .
                 </h1>
+                <p
+                  data-testid="experts-hero-promise"
+                  className="mt-7 inline-flex items-center gap-3 rounded-pill border border-cream/25 bg-cream/5 px-4 py-2 font-mono text-[12px] uppercase tracking-[0.14em] text-cream"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-sun" aria-hidden />
+                  Apply free · placed in 14 days · or we tell you why in writing
+                </p>
               </Reveal>
             </div>
             <div className="md:col-span-4 md:pt-6">
               <p className="text-[17px] leading-relaxed text-cream/75">
-                Join a network of senior operators who have replaced cold
-                outbound with a curated feed of pre-qualified briefs, backed by
-                escrow and counter-signed SOWs.
+                A curated feed of pre-qualified briefs. Flat 15% — no bidding,
+                no payout fees, no upsells. Escrow on every milestone, paid in
+                1.4 days. Median roster member bills <span className="text-cream font-semibold">$264k/year</span>.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row md:flex-col">
                 <LinkButton to="/onboarding/expert" tone="sun" size="lg" arrow>
@@ -259,8 +283,78 @@ export function ForExpertsPage() {
                 <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-60">
                   {p.body}
                 </p>
+                <p className="mt-5 inline-flex items-center gap-2 rounded-pill border border-sun bg-sun/15 px-3 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink">
+                  <span className="h-1 w-1 rounded-full bg-ink" aria-hidden />
+                  {p.value}
+                </p>
               </Reveal>
             ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ───────────── EXPERT VALUE STACK ───────────── */}
+      <section className="border-y border-ink-12 bg-paper py-20 md:py-28">
+        <Container>
+          <div className="grid gap-12 md:grid-cols-12">
+            <div className="md:col-span-5">
+              <Eyebrow index="§ 03.5" accent>
+                What's in the engagement
+              </Eyebrow>
+              <h2 className="display-lg mt-4 text-ink">
+                The line items
+                <br /> that come standard.
+              </h2>
+              <p className="prose-lede mt-6 max-w-md">
+                These are the costs a senior independent normally absorbs —
+                sales pipeline, legal drafting, scope policing, late-payment
+                chasing. On WorkSoy they're handled in the ops fee. You bill the
+                hours you sold; we cover the rest.
+              </p>
+            </div>
+
+            <div className="md:col-span-7">
+              <ul
+                data-testid="expert-value-stack"
+                className="rounded border border-ink-12 bg-white"
+              >
+                {expertValueStack.map((row, i) => (
+                  <li
+                    key={row.item}
+                    className={[
+                      "flex items-baseline justify-between gap-4 px-5 py-4",
+                      i < expertValueStack.length - 1 ? "border-b border-ink-08" : "",
+                    ].join(" ")}
+                  >
+                    <span className="flex items-baseline gap-3 text-[14px] text-ink">
+                      <span className="font-mono text-[11px] text-ink-40 tabular">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      {row.item}
+                    </span>
+                    <span className="font-mono text-[12px] text-ink-60 tabular">
+                      {row.value}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-4 rounded border border-ink bg-ink px-5 py-4 text-cream">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-cream/60">
+                  Cost to you on Upwork / Toptal-style platforms
+                </span>
+                <span className="font-display text-[24px] font-medium tabular leading-none">
+                  ~32–48% in fees + losses
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-4 rounded border border-sun bg-sun px-5 py-4 text-ink">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
+                  Your cost on WorkSoy
+                </span>
+                <span className="font-display text-[24px] font-medium tabular leading-none">
+                  15% — flat, milestone only
+                </span>
+              </div>
+            </div>
           </div>
         </Container>
       </section>
@@ -396,12 +490,19 @@ export function ForExpertsPage() {
                 <h2 className="mt-6 font-display text-[clamp(2.25rem,5vw,4rem)] font-medium leading-[0.98] tracking-[-0.03em] text-ink">
                   Apply in 15 minutes.
                   <br />
-                  Matcher reads it this week.
+                  Live on the roster in 14 days —
+                  <br />
+                  <span className="text-ink-40">or we tell you why in writing.</span>
                 </h2>
+                <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-ink-60">
+                  No application fee. No subscription. You either pass the
+                  four gates and start working inside a month, or you get
+                  written feedback on what to sharpen — never a silent reject.
+                </p>
               </div>
               <div className="md:col-span-4 md:text-right">
                 <LinkButton to="/onboarding/expert" tone="ink" size="lg" arrow>
-                  Start application
+                  Start application — free
                 </LinkButton>
                 <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-60">
                   Or email hello@worksoy.com
